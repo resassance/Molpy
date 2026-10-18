@@ -1,0 +1,59 @@
+{
+  "contents": {
+    "twoColumnSearchResultsRenderer": {
+      "primaryContents": {
+        "sectionListRenderer": {
+          "contents": [
+            {
+              "itemSectionRenderer": {
+                "contents": [
+                  {
+                    "videoRenderer": {
+                      "videoId": "song-one",
+                      "title": {
+                        "runs": [
+                          {
+                            "text": "Linkin Park - Numb (Official Video)"
+                          }
+                        ]
+                      },
+                      "ownerText": {
+                        "runs": [
+                          {
+                            "text": "Uploader",
+                            "navigationEndpoint": {
+                              "browseEndpoint": {
+                                "browseId": "channel-one",
+                                "browseEndpointContextSupportedConfigs": {
+                                  "browseEndpointContextMusicConfig": {
+                                    "pageType": "CHANNEL"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "lengthText": {
+                        "simpleText": "3:07"
+                      },
+                      "thumbnail": {
+                        "thumbnails": [
+                          {
+                            "url": "https://example.test/square-release-looking.jpg",
+                            "width": 500,
+                            "height": 500
+                          }
+                        ]
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}
