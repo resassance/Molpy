@@ -4,25 +4,31 @@ import android.content.Context
 import android.os.Looper
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.PlaybackException
+import androidx.media3.datasource.HttpDataSource
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import app.musicplayer.model.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
-import okhttp3.OkHttpClient
+import okhttp3.Call
 
 /** The service owns this engine. All Media3 calls and listeners run on Android's main looper. */
 @UnstableApi
-class AndroidPlayerEngine(context: Context) : PlayerEngine {
+class AndroidPlayerEngine(context: Context, callFactoryFor: (Long) -> Call.Factory,
+    localDataSource: androidx.media3.datasource.DataSource.Factory?) : PlayerEngine {
+    constructor(context: Context, callFactoryFor: (Long) -> Call.Factory) : this(context, callFactoryFor, null)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private val http = OkHttpClient()
-    private val sources = MediaSourceFactory(http)
+    private val sources = MediaSourceFactory(callFactoryFor, localDataSource)
     internal val player: ExoPlayer
     private val state = MutableStateFlow(PlaybackSnapshot())
     override val snapshot: StateFlow<PlaybackSnapshot> = state.asStateFlow()
     private var entry: QueueEntry? = null
     private var track: Track? = null
+    private var loadId: Long? = null
+    private var local = false
+    private var candidateId: CandidateId? = null
     private var released = false
     private val listener = object : Player.Listener {
         override fun onEvents(player: Player, events: Player.Events) { publish() }
@@ -48,6 +54,15 @@ class AndroidPlayerEngine(context: Context) : PlayerEngine {
                 is AppResult.Success -> {
                     this@AndroidPlayerEngine.entry = entry
                     track = source.track
+                    loadId = when (source) {
+                        is PlayableSource.Local -> source.loadId
+                        is PlayableSource.Remote -> source.loadId
+                    }
+                    local = source is PlayableSource.Local
+                    candidateId = when (source) {
+                        is PlayableSource.Local -> source.candidateId
+                        is PlayableSource.Remote -> source.lease.candidateId
+                    }
                     player.setMediaSource(built.value, positionMs.coerceAtLeast(0))
                     player.playWhenReady = playWhenReady
                     player.prepare()
@@ -72,6 +87,7 @@ class AndroidPlayerEngine(context: Context) : PlayerEngine {
         if (released) return
         entry = null
         track = null
+        loadId = null
         player.stop()
         player.clearMediaItems()
         state.value = PlaybackSnapshot()
@@ -84,18 +100,10 @@ class AndroidPlayerEngine(context: Context) : PlayerEngine {
         scope.cancel()
         player.removeListener(listener)
         player.release()
-        http.dispatcher.executorService.shutdown()
-        http.connectionPool.evictAll()
     }
     private fun publish() {
         if (released || entry == null) return
-        val error = player.playerError?.let { AppError(
-            when (it.errorCode) {
-                2004 -> ErrorCode.URL_REJECTED
-                in 2000..2999 -> ErrorCode.NETWORK
-                in 3000..4999 -> ErrorCode.INCOMPATIBLE_RESOURCE
-                else -> ErrorCode.UNKNOWN
-            }, "player.callback", it.errorCode in 2000..2999) }
+        val error = player.playerError?.let { if (local) AppError(ErrorCode.INCOMPLETE_MEDIA, "player.local", false) else normalizeMedia3Failure(it) }
         val status = when {
             error != null -> PlayerStatus.FAILED
             player.playbackState == Player.STATE_ENDED -> PlayerStatus.ENDED
@@ -105,7 +113,19 @@ class AndroidPlayerEngine(context: Context) : PlayerEngine {
             else -> PlayerStatus.IDLE
         }
         state.value = PlaybackSnapshot(status, entry, track, player.currentPosition.coerceAtLeast(0),
-            player.duration.takeIf { it != C.TIME_UNSET && it >= 0 }, player.playWhenReady, error)
+            player.duration.takeIf { it != C.TIME_UNSET && it >= 0 }, player.playWhenReady, error, loadId, candidateId)
     }
     private fun checkMain() { check(Looper.myLooper() == Looper.getMainLooper()) { "Player commands require the main thread" } }
+}
+
+/** Inspect Media3 1.11.1's typed cause; never parse exception text or retain response data. */
+@UnstableApi
+internal fun normalizeMedia3Failure(error: PlaybackException): AppError {
+    var cause: Throwable? = error
+    val seen = mutableSetOf<Throwable>()
+    while (cause != null && seen.add(cause)) {
+        if (cause is HttpDataSource.InvalidResponseCodeException) return mapPlayerFailure(error.errorCode, cause.responseCode)
+        cause = cause.cause
+    }
+    return mapPlayerFailure(error.errorCode, null)
 }

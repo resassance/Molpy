@@ -1,35 +1,47 @@
 package app.musicplayer.playback
 
-import android.net.Uri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
 import app.musicplayer.model.*
-import okhttp3.OkHttpClient
+import okhttp3.Call
 
 /** Per-lease factories keep request headers out of subsequent tracks and persistent caches. */
 @UnstableApi
-internal class MediaSourceFactory(private val http: OkHttpClient) {
+internal class MediaSourceFactory(private val callFactoryFor: (Long) -> Call.Factory,
+    private val localDataSource: DataSource.Factory? = null) {
+    constructor(http: Call.Factory) : this({ http })
     fun create(entry: QueueEntry, source: PlayableSource): AppResult<MediaSource> {
-        if (source !is PlayableSource.Remote || source.lease.transport !in PlaybackCoordinator.CAPABILITIES.transports) {
+        if (source is PlayableSource.Remote && source.lease.transport !in PlaybackCoordinator.CAPABILITIES.transports ||
+            source is PlayableSource.Local && localDataSource == null) {
             return AppResult.Failure(AppError(ErrorCode.UNSUPPORTED_TRANSPORT, "player.source", false))
         }
         val metadata = MediaMetadata.Builder()
             .setTitle(source.track.title)
             .setArtist(source.track.artists.joinToString(", ") { it.name })
             .setAlbumTitle(source.track.album?.name)
-            .setArtworkUri(source.track.artwork.remoteUrl?.let(Uri::parse))
             .build()
         val item = MediaItem.Builder()
             .setMediaId(entry.id.value)
-            .setUri(source.lease.request.uri)
-            .setMimeType(media3MimeType(source.lease.transport, source.lease.representation.mimeType))
+            .setUri(when (source) {
+                is PlayableSource.Local -> source.stableUri
+                is PlayableSource.Remote -> source.lease.request.uri
+            })
+            .setCustomCacheKey((source as? PlayableSource.Local)?.cacheKey)
+            .setMimeType(when (source) {
+                is PlayableSource.Local -> source.mimeType
+                is PlayableSource.Remote -> media3MimeType(source.lease.transport, source.lease.representation.mimeType)
+            })
             .setMediaMetadata(metadata)
             .build()
-        val dataSource = OkHttpDataSource.Factory(http).setDefaultRequestProperties(source.lease.request.headers)
+        val dataSource = when (source) {
+            is PlayableSource.Local -> requireNotNull(localDataSource)
+            is PlayableSource.Remote -> OkHttpDataSource.Factory(callFactoryFor(source.lease.networkGeneration)).setDefaultRequestProperties(source.lease.request.headers)
+        }
         return AppResult.Success(DefaultMediaSourceFactory(dataSource).createMediaSource(item))
     }
 }

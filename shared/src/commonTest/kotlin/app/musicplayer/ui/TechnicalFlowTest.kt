@@ -3,7 +3,7 @@ package app.musicplayer.ui
 import app.musicplayer.catalog.CatalogPort
 import app.musicplayer.lyrics.*
 import app.musicplayer.model.*
-import app.musicplayer.playback.PlaybackPort
+import app.musicplayer.queue.*
 import app.musicplayer.search.SearchCoordinator
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -12,6 +12,44 @@ import kotlin.test.*
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class TechnicalFlowTest {
+    @Test fun persistenceOnlyErrorPreservesActualPausedPlayingAndEmptySnapshots() = runTest {
+        for (status in listOf(PlayerStatus.IDLE, PlayerStatus.PAUSED, PlayerStatus.PLAYING)) {
+            val actual = if (status == PlayerStatus.IDLE) null else track("Actual")
+            val error = AppError(ErrorCode.DATABASE, "persistence.save", false)
+            val snapshot = PlaybackSnapshot(status, actual?.let { QueueEntry(QueueEntryId("actual"), it.id) },
+                actual, 1234, playWhenReady = status == PlayerStatus.PLAYING, error = error)
+            val port = Port().apply { this.snapshot.value = snapshot }
+            val model = model(Catalog(), port, backgroundScope); runCurrent()
+            assertEquals(snapshot, model.state.value.playback)
+            assertEquals(ErrorAction.NONE, present(model.state.value.playback.error!!).primaryAction)
+            model.close()
+        }
+    }
+    @Test fun routeChangeCancelsSearchAndLyricsAndRejectsLateResults() = runTest {
+        val searchGate = CompletableDeferred<Unit>()
+        val lyricsGate = CompletableDeferred<Unit>()
+        val model = model(Catalog {
+            withContext(NonCancellable) { searchGate.await() }
+            AppResult.Success(listOf(track(it)))
+        }, Port(), backgroundScope, lyricsPort { _, _ ->
+            withContext(NonCancellable) { lyricsGate.await() }
+            AppResult.Success(LyricsCandidate(NormalizedLyrics("late", emptyList(), LyricsKind.PLAIN,
+                SourceRef("test", "lyrics", "a")), true, false))
+        })
+        model.select(track("A")); runCurrent()
+        val search = launch { model.search("A") }; runCurrent()
+        model.loadLyrics(); runCurrent()
+        model.networkInvalidated()
+        searchGate.complete(Unit); lyricsGate.complete(Unit)
+        search.join(); runCurrent()
+        assertTrue(model.state.value.results.isEmpty())
+        assertNull(model.state.value.lyrics)
+        assertFalse(model.state.value.loadingSearch)
+        assertFalse(model.state.value.loadingLyrics)
+        assertEquals(track("A"), model.state.value.selected)
+        model.close()
+    }
+
     @Test fun ignoresStaleSearch() = runTest {
         val gate = CompletableDeferred<Unit>()
         val catalog = Catalog { query ->
@@ -116,10 +154,24 @@ class TechnicalFlowTest {
         model.close()
     }
 
-    private fun model(catalog: CatalogPort, port: PlaybackPort, scope: CoroutineScope,
+    @Test fun recreatedScreensGenerateDistinctQueueOccurrencesForSameTrack() = runTest {
+        val port = Port()
+        val first = model(Catalog(), port, backgroundScope)
+        first.select(track("A")); runCurrent()
+        val firstEntry = port.snapshot.value.current!!
+        first.close()
+        val recreated = model(Catalog(), port, backgroundScope)
+        recreated.select(track("A")); runCurrent()
+        val secondEntry = port.snapshot.value.current!!
+        assertEquals(firstEntry.trackId, secondEntry.trackId)
+        assertNotEquals(firstEntry.id, secondEntry.id)
+        recreated.close()
+    }
+
+    private fun model(catalog: CatalogPort, port: QueuePlaybackPort, scope: CoroutineScope,
                       provider: LyricsPort = lyricsPort { _, _ -> AppResult.Success(null) }) =
         TechnicalScreenModel(SearchCoordinator(catalog), port,
-            LyricsLoader(listOf(provider), LyricsSelector(), SessionLyricsCache()) { 0L }, scope)
+            LyricsLoader(listOf(provider), LyricsSelector(), SessionLyricsCache()) { 0L }, EngineeringLibrary(), EngineeringNetwork(EngineeringLibrary()), EngineeringSecrets(), scope)
 
     private class Catalog(private val songs: suspend (String) -> AppResult<List<Track>> = { AppResult.Success(emptyList()) }) : CatalogPort {
         override suspend fun searchSongs(query: String) = songs(query)
@@ -127,7 +179,9 @@ class TechnicalFlowTest {
         override suspend fun findMusicMatches(track: Track) = AppResult.Success(emptyList<Track>())
     }
 
-    private open class Port : PlaybackPort {
+    private open class Port : QueuePlaybackPort {
+        override val queue = MutableStateFlow(QueueSnapshot())
+        override suspend fun dispatch(command: QueueCommand) { queue.value = QueueReducer.reduce(queue.value, command).snapshot }
         override val snapshot = MutableStateFlow(PlaybackSnapshot())
         var failure: AppError? = null
         var stops = 0

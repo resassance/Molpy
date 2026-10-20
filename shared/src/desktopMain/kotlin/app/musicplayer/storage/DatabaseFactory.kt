@@ -1,0 +1,11 @@
+package app.musicplayer.storage
+
+import androidx.room.Room
+import androidx.sqlite.driver.bundled.BundledSQLiteDriver
+import kotlinx.coroutines.Dispatchers
+
+fun createMusicDatabase(path: String): MusicDatabase = Room.databaseBuilder<MusicDatabase>(path)
+    .setDriver(BundledSQLiteDriver())
+    .addMigrations(Migration1To2)
+    .setQueryCoroutineContext(Dispatchers.IO)
+    .build()

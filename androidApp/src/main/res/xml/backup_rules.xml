@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- Transfer index and media must travel together, so neither is restored from backup. -->
+    <exclude domain="database" path="exoplayer_internal.db" />
+    <exclude domain="database" path="exoplayer_internal.db-wal" />
+    <exclude domain="database" path="exoplayer_internal.db-shm" />
+    <exclude domain="database" path="exoplayer_internal.db-journal" />
+    <exclude domain="file" path="downloads/" />
+    <exclude domain="file" path="proxy-secrets/" />
+    <exclude domain="sharedpref" path="proxy-secrets.xml" />
+    <!-- Actual download media and proxy ciphertext live under noBackupFilesDir. -->
+</full-backup-content>

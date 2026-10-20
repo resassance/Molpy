@@ -140,13 +140,20 @@ class ResolverMappingTest {
         assertFalse(result.toString().contains("secret-address"))
     }
 
+    @Test fun supportedProxyContextUsesGenerationBoundExtractor() = runTest {
+        val extractor = FakeExtractor { stream() }
+        val result = resolver(extractor).resolve(candidate, progressive,
+            network.copy(config = NetworkConfig(NetworkMode.SOCKS5, ProxyEndpoint("localhost", 9050), null)))
+        assertNotNull(result.valueOrNull())
+        assertEquals(1, extractor.calls)
+    }
+
     @Test fun sourceNetworkAndEmptyCapabilityFailuresDoNotExtract() = runTest {
         val extractor = FakeExtractor { error("Must not extract") }
         val resolver = resolver(extractor)
         assertEquals(ErrorCode.SOURCE_UNAVAILABLE, resolver.resolve(candidate.copy(source = SourceRef("other", "video", "video")), progressive, network).errorOrNull()?.code)
         assertEquals(ErrorCode.NETWORK, resolver.resolve(candidate, progressive, network.copy(online = false)).errorOrNull()?.code)
         assertEquals(ErrorCode.INVALID_CONFIG, resolver.resolve(candidate, progressive, network.copy(ready = false)).errorOrNull()?.code)
-        assertEquals(ErrorCode.PROXY_UNSUPPORTED, resolver.resolve(candidate, progressive, network.copy(config = NetworkConfig(NetworkMode.SOCKS5, ProxyEndpoint("localhost", 9050), null))).errorOrNull()?.code)
         assertEquals(ErrorCode.UNSUPPORTED_TRANSPORT, resolver.resolve(candidate, PlaybackCapabilities(emptySet()), network).errorOrNull()?.code)
         assertEquals(0, extractor.calls)
     }

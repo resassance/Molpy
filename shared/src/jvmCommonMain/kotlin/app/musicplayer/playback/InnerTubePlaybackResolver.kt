@@ -37,10 +37,6 @@ class InnerTubePlaybackResolver(
         if (!network.ready || currentNetworkGeneration() != network.generation) {
             return failure(ErrorCode.INVALID_CONFIG, ResolverStage.NETWORK, ResolverReason.INVALID_CONTEXT)
         }
-        // Proxy routing across extractor, player and token components is implemented in Task10.
-        if (network.config.mode != NetworkMode.SYSTEM) {
-            return failure(ErrorCode.PROXY_UNSUPPORTED, ResolverStage.NETWORK, ResolverReason.INVALID_CONTEXT)
-        }
         if (!network.online) return failure(ErrorCode.NETWORK, ResolverStage.NETWORK, ResolverReason.NETWORK_FAILURE, true)
         if (candidate.source.provider != "youtube" || candidate.source.kind != "video") {
             return failure(ErrorCode.SOURCE_UNAVAILABLE, ResolverStage.RESOLVE, ResolverReason.SOURCE_UNAVAILABLE)
@@ -98,6 +94,8 @@ class InnerTubePlaybackResolver(
                     else -> failure(ErrorCode.SOURCE_UNAVAILABLE, ResolverStage.RESOLVE, ResolverReason.SOURCE_UNAVAILABLE)
                 }
             }
+        } catch (e: AppFailureException) {
+            AppResult.Failure(e.error)
         } catch (_: IOException) {
             failure(ErrorCode.NETWORK, ResolverStage.NETWORK, ResolverReason.NETWORK_FAILURE, true)
         } catch (_: Exception) {

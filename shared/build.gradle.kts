@@ -54,3 +54,5 @@ dependencies {
     add("kspAndroid", libs.room.compiler)
     add("kspDesktop", libs.room.compiler)
 }
+
+ksp { arg("room.schemaLocation", "$projectDir/schemas") }

@@ -30,12 +30,13 @@ data class ResolvedPlayback(
 
 data class PlaybackCapabilities(val transports: Set<TransportKind>)
 
-/** Local is a future offline contract; the current Android engine rejects it explicitly. */
+/** Runtime local and remote sources share per-load correlation; neither persists a request lease. */
 sealed interface PlayableSource {
     val track: Track
-    data class Remote(val lease: ResolvedPlayback, override val track: Track) : PlayableSource
+    data class Remote(val lease: ResolvedPlayback, override val track: Track, val loadId: Long? = null) : PlayableSource
     data class Local(val assetId: AssetId, val stableUri: String, val mimeType: String,
-                     val cacheKey: String, override val track: Track) : PlayableSource
+                     val cacheKey: String, override val track: Track, val loadId: Long? = null,
+                     val candidateId: CandidateId? = null) : PlayableSource
 }
 
 enum class PlayerStatus { IDLE, RESOLVING, BUFFERING, PLAYING, PAUSED, ENDED, FAILED }
@@ -48,4 +49,7 @@ data class PlaybackSnapshot(
     val durationMs: Long? = null,
     val playWhenReady: Boolean = false,
     val error: AppError? = null,
+    /** Runtime engine load identity; never included in the durable queue snapshot. */
+    val loadId: Long? = null,
+    val candidateId: CandidateId? = null,
 )

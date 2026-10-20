@@ -31,6 +31,8 @@ class ArtworkLoader(
         .fallback(placeholder)
         .build()
 
+    fun networkInvalidated() { imageLoader.memoryCache?.clear() }
+
     suspend fun fetch(artwork: Artwork): AppResult<ArtworkBytes> {
         val address = artwork.remoteUrl?.takeIf { artwork.kind != ArtworkKind.PLACEHOLDER }
             ?: return failure(ErrorCode.SOURCE_UNAVAILABLE)
@@ -44,6 +46,7 @@ class ArtworkLoader(
             val bytes = response.bodyAsBytes()
             if (bytes.isEmpty()) failure(ErrorCode.PROVIDER_CHANGED) else AppResult.Success(ArtworkBytes(bytes, mime))
         } catch (e: CancellationException) { throw e }
+        catch (e: AppFailureException) { AppResult.Failure(e.error) }
         catch (e: ResponseException) { httpFailure(e.response.status.value) }
         catch (_: IOException) { failure(ErrorCode.NETWORK, true) }
         catch (_: Exception) { failure(ErrorCode.UNKNOWN) }

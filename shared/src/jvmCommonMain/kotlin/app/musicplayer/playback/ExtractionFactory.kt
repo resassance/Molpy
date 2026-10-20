@@ -15,7 +15,7 @@ object ExtractionFactory {
     /**
      * The host owns the configured HTTP client and optional token provider. A fresh anonymous
      * InnerTube session has no Google cookies, account discovery, or optional remote config store.
-     * Construction performs no requests or prewarming. SYSTEM route is required by the resolver.
+     * Construction performs no requests or prewarming. The host supplies a generation-routed client.
      */
     fun create(
         httpClient: HttpClient,

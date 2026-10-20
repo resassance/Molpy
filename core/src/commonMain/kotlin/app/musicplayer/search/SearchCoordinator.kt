@@ -23,9 +23,13 @@ class SearchCoordinator(private val catalog: CatalogPort, private val matcher: T
         val fallback = catalog.searchVideos(trimmed)
         if (fallback is AppResult.Failure) return AppResult.Failure(primary.errorOrNull() ?: fallback.error)
         fallback as AppResult.Success
+        var primaryFailure = primary.errorOrNull()
         val tracks = fallback.value.distinctBy { it.id }.map { original ->
             val partial = parseTentative(original)
             val matches = catalog.findMusicMatches(partial)
+            if (primaryFailure == null && matches.errorOrNull()?.code == ErrorCode.DATABASE) {
+                primaryFailure = matches.errorOrNull()
+            }
             val metadata = if (matches is AppResult.Success)
                 matcher.rank(partial, matches.value, intent).singleOrNull { it.autoLink }?.track else null
             if (metadata == null) partial else partial.copy(
@@ -33,7 +37,7 @@ class SearchCoordinator(private val catalog: CatalogPort, private val matcher: T
                 artwork = metadata.artwork, durationMs = metadata.durationMs, provenance = metadata.provenance,
             )
         }
-        return AppResult.Success(SearchResults(tracks, primary.errorOrNull()))
+        return AppResult.Success(SearchResults(tracks, primaryFailure))
     }
 
     private fun suitable(track: Track, intent: SearchIntent): Boolean {

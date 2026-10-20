@@ -15,7 +15,11 @@ class LyricsLoader(
     private val clock: () -> Long,
 ) {
     suspend fun load(track: Track, candidate: PlaybackCandidate): LyricsLookup {
-        cache.getLyrics(track.id, candidate.id, clock())?.let { return it }
+        val now = clock()
+        try {
+            cache.getLyrics(track.id, candidate.id, now)?.let { return it }
+        } catch (e: CancellationException) { throw e }
+        catch (_: Exception) { return LyricsLookup.Failed(AppError(ErrorCode.DATABASE, "lyrics.cache.read", true)) }
         if (providers.isEmpty()) return LyricsLookup.Failed(AppError(ErrorCode.INVALID_CONFIG, "lyrics.providers", false))
         val results = coroutineScope {
             providers.map { provider -> async {
@@ -36,7 +40,13 @@ class LyricsLoader(
             results.any { it is AppResult.Failure } -> LyricsLookup.Failed(results.firstNotNullOf { it.errorOrNull() })
             else -> LyricsLookup.Unavailable
         }
-        cache.saveLyrics(track.id, candidate.id, lookup, clock())
+        // Transient provider failures must retain their meaning and never enter the cache.
+        if (lookup is LyricsLookup.Failed) return lookup
+        val savedAt = clock()
+        try {
+            cache.saveLyrics(track.id, candidate.id, lookup, savedAt)
+        } catch (e: CancellationException) { throw e }
+        catch (_: Exception) { return LyricsLookup.Failed(AppError(ErrorCode.DATABASE, "lyrics.cache.write", true)) }
         return lookup
     }
 

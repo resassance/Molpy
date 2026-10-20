@@ -7,12 +7,13 @@ import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import app.musicplayer.MusicApplication
 import app.musicplayer.model.*
+import app.musicplayer.queue.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import java.util.concurrent.Executor
 
 /** Activity owns connect/close; no Activity owns or releases the service's engine. */
-class PlayerConnection(private val application: MusicApplication) : PlaybackPort, AutoCloseable {
+class PlayerConnection(private val application: MusicApplication) : QueuePlaybackPort, AutoCloseable {
     enum class Status { DISCONNECTED, CONNECTING, CONNECTED, FAILED }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val graph = application.graph
@@ -20,12 +21,19 @@ class PlayerConnection(private val application: MusicApplication) : PlaybackPort
     val status: StateFlow<Status> = controllers.status
     private val state = MutableStateFlow(PlaybackSnapshot())
     override val snapshot: StateFlow<PlaybackSnapshot> = state.asStateFlow()
+    private val queueState = MutableStateFlow(QueueSnapshot())
+    override val queue: StateFlow<QueueSnapshot> = queueState.asStateFlow()
     private var closed = false
 
     init {
         scope.launch { graph.playback.collectLatest { host ->
-            if (host == null) state.value = PlaybackSnapshot()
-            else host.snapshot.collect { state.value = it }
+            if (host == null) {
+                state.value = PlaybackSnapshot()
+                queueState.value = QueueSnapshot()
+            } else coroutineScope {
+                launch { host.snapshot.collect { state.value = it } }
+                host.queue.collect { queueState.value = it }
+            }
         } }
     }
 
@@ -52,6 +60,13 @@ class PlayerConnection(private val application: MusicApplication) : PlaybackPort
             if (ready != Status.CONNECTED || host == null) AppResult.Failure(AppError(ErrorCode.SOURCE_UNAVAILABLE, "player.connect", true))
             else host.select(track, entry, positionMs, playWhenReady)
         }
+    override suspend fun dispatch(command: QueueCommand) {
+        withContext(Dispatchers.Main.immediate) {
+            connect()
+            val ready = withTimeoutOrNull(10000) { status.first { it != Status.CONNECTING } }
+            if (ready == Status.CONNECTED) graph.playback.value?.dispatch(command)
+        }
+    }
     override fun play() { checkMain(); graph.playback.value?.play() }
     override fun pause() { checkMain(); graph.playback.value?.pause() }
     override fun seek(positionMs: Long) { checkMain(); graph.playback.value?.seek(positionMs) }
