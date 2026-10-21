@@ -529,6 +529,34 @@ class PlaybackCoordinatorTest {
         assertEquals(2, calls)
     }
 
+    @Test
+    fun oldLoadCannotPublishBuffer() = runTest {
+        val engine = CallbackEngine()
+        val coordinator =
+            PlaybackCoordinator(
+                engine,
+                resolver { AppResult.Success(lease(it)) },
+                { network },
+                backgroundScope,
+            )
+        coordinator.select(a, entry(a), 0, true)
+        runCurrent()
+        val old = engine.snapshot.value.copy(bufferedPositionMs = 8000)
+        coordinator.select(b, entry(b), 0, true)
+        runCurrent()
+        val current = engine.snapshot.value
+        val loadB = current.loadId
+        engine.snapshot.value = old
+        runCurrent()
+        assertEquals(loadB, coordinator.snapshot.value.loadId)
+        assertNull(coordinator.snapshot.value.bufferedPositionMs)
+        engine.snapshot.value = current.copy(bufferedPositionMs = 2000)
+        runCurrent()
+        assertEquals(2000L, coordinator.snapshot.value.bufferedPositionMs)
+        coordinator.stop()
+        assertNull(coordinator.snapshot.value.bufferedPositionMs)
+    }
+
     private class CallbackEngine : PlayerEngine {
         override val snapshot = MutableStateFlow(PlaybackSnapshot())
         var loadError: ErrorCode? = null

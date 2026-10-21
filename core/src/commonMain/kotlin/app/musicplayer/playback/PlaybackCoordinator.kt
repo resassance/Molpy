@@ -98,14 +98,24 @@ class PlaybackCoordinator(
         val track = retained.track ?: return AppResult.Success(Unit)
         val entry = retained.current ?: return AppResult.Success(Unit)
         engine.stop()
-        state.value = retained.copy(status = PlayerStatus.RESOLVING, error = null)
+        state.value =
+            retained.copy(
+                status = PlayerStatus.RESOLVING,
+                error = null,
+                bufferedPositionMs = null,
+                loadId = null,
+            )
         return try {
             coroutineScope {
                 while (true) {
                     val started = clock()
+                    var resolveStarted: Long? = null
                     val pending = async {
                         sourceSelector.select(track, { resolveOperations < 2 }) {
+                            ensureActive()
                             resolveOperations++
+                            resolveStarted = clock()
+                            record("metadata", null, elapsed = resolveStarted!! - started)
                         }
                     }
                     resolution = pending
@@ -113,7 +123,13 @@ class PlaybackCoordinator(
                     ensureActive()
                     if (selectedGeneration != generation)
                         throw CancellationException("Superseded selection")
-                    record("resolve", result.errorOrNull()?.code, elapsed = clock() - started)
+                    if (resolveStarted == null)
+                        record("metadata", result.errorOrNull()?.code, elapsed = clock() - started)
+                    record(
+                        "resolve",
+                        result.errorOrNull()?.code,
+                        elapsed = clock() - (resolveStarted ?: clock()),
+                    )
                     val loaded =
                         when (result) {
                             is AppResult.Failure -> result
@@ -140,11 +156,13 @@ class PlaybackCoordinator(
                                                 is PlayableSource.Remote -> source.lease.candidateId
                                             },
                                     )
+                                val loadStarted = clock()
                                 engine.load(entry, source, position, intent.playWhenReady).also {
                                     record(
                                         "load",
                                         it.errorOrNull()?.code,
                                         (source as? PlayableSource.Remote)?.lease?.transport?.name,
+                                        elapsed = clock() - loadStarted,
                                     )
                                 }
                             }

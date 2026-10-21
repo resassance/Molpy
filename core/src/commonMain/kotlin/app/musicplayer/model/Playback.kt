@@ -80,4 +80,5 @@ data class PlaybackSnapshot(
     val loadId: Long? = null,
     val candidateId: CandidateId? = null,
     val attemptId: Long? = null,
+    val bufferedPositionMs: Long? = null,
 )

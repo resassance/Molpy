@@ -225,7 +225,12 @@ internal class PlaybackRuntime(
 ) {
     private val local = OfflineMediaSource(downloads.cache)
     val engine =
-        AndroidPlayerEngine(context, network.transport::callFactoryFor, local.dataSourceFactory)
+        AndroidPlayerEngine(
+            context,
+            network.transport::callFactoryFor,
+            local.dataSourceFactory,
+            diagnostics::record,
+        )
     private var extractionWarmup: Job? = null
     private var extraction: ExtractionSession? =
         if (network.context.value.ready) newExtraction() else null
