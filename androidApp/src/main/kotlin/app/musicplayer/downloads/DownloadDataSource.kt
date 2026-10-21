@@ -6,12 +6,12 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.*
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import app.musicplayer.model.*
+import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.Response
-import java.io.IOException
 
 /** Closed safe exception vocabulary. Never attach the HTTP exception as a cause. */
 internal class DownloadFailure(val error: AppError) : IOException(error.code.name)
@@ -25,7 +25,8 @@ internal data class DownloadResponse(
     val status: Int,
     val headers: Map<String, List<String>>,
 ) {
-    override fun toString(): String = "DownloadResponse(status=$status, offset=$offset, headers=redacted)"
+    override fun toString(): String =
+        "DownloadResponse(status=$status, offset=$offset, headers=redacted)"
 }
 
 internal fun interface DownloadResponseInspector {
@@ -35,10 +36,12 @@ internal fun interface DownloadResponseInspector {
 /** Fail-closed default for standalone callers; the application owner supplies DownloadRecovery. */
 internal val FreshDownloadOnly = DownloadResponseInspector { response ->
     if (response.offset == 0L && response.status == 200) AppResult.Success(Unit)
-    else AppResult.Failure(AppError(ErrorCode.INCOMPATIBLE_RESOURCE, "download.response", false))
+    else AppResult.Failure(AppError(ErrorCode.RESOURCE_CHANGED, "download.response", false))
 }
 
-/** Install INSIDE CacheDataSource.Factory as upstream, so exo_redir can only see stable identity. */
+/**
+ * Install INSIDE CacheDataSource.Factory as upstream, so exo_redir can only see stable identity.
+ */
 @UnstableApi
 internal class DownloadDataSource private constructor(private val factory: Factory) : DataSource {
     private var stableUri: Uri? = null
@@ -53,32 +56,70 @@ internal class DownloadDataSource private constructor(private val factory: Facto
         stableUri = dataSpec.uri
         try {
             val id = StableCacheIdentity.assetId(dataSpec.uri.toString())
-            val asset = runBlocking { factory.repository.findAsset(id) }
-                ?: reject(ErrorCode.INCOMPLETE_MEDIA)
-            if (dataSpec.key != asset.storageKey) reject(ErrorCode.INCOMPATIBLE_RESOURCE)
+            val asset =
+                runBlocking { factory.repository.findAsset(id) }
+                    ?: reject(ErrorCode.INCOMPLETE_MEDIA)
+            if (dataSpec.key != asset.storageKey) reject(ErrorCode.RESOURCE_CHANGED)
             val attempt = factory.recovery?.attempt(asset)
-            attempt?.rejection?.let { rejection = it; throw DownloadFailure(it) }
-            if (factory.recovery == null && factory.inspector === FreshDownloadOnly && dataSpec.position != 0L) reject(ErrorCode.INCOMPATIBLE_RESOURCE)
-            val lease = when (val resolved = runBlocking { factory.resolve(asset) }) {
-                is AppResult.Success -> resolved.value
-                is AppResult.Failure -> throw DownloadFailure(resolved.error)
+            attempt?.rejection?.let {
+                rejection = it
+                throw DownloadFailure(it)
             }
-            if (lease.transport != TransportKind.PROGRESSIVE || !isProgressiveAudio(lease.representation.mimeType)) reject(ErrorCode.UNSUPPORTED_TRANSPORT)
-            if (lease.candidateId != asset.candidateId || lease.representation != asset.representation) {
-                val error = AppError(ErrorCode.INCOMPATIBLE_RESOURCE, "download.representation", false)
+            if (
+                factory.recovery == null &&
+                    factory.inspector === FreshDownloadOnly &&
+                    dataSpec.position != 0L
+            )
+                reject(ErrorCode.RESOURCE_CHANGED)
+            val lease =
+                when (val resolved = runBlocking { factory.resolve(asset) }) {
+                    is AppResult.Success -> resolved.value
+                    is AppResult.Failure -> throw DownloadFailure(resolved.error)
+                }
+            if (
+                lease.transport != TransportKind.PROGRESSIVE ||
+                    !isProgressiveAudio(lease.representation.mimeType)
+            )
+                reject(ErrorCode.UNSUPPORTED_TRANSPORT)
+            if (
+                lease.candidateId != asset.candidateId ||
+                    representationCompatibility(
+                        asset.source,
+                        asset.representation,
+                        asset.source,
+                        lease.representation,
+                    ) != RepresentationCompatibility.COMPATIBLE
+            ) {
+                val error = AppError(ErrorCode.RESOURCE_CHANGED, "download.representation", false)
                 if (attempt != null) factory.recovery?.reject(asset, attempt, false, error)
-                reject(ErrorCode.INCOMPATIBLE_RESOURCE)
+                reject(ErrorCode.RESOURCE_CHANGED)
             }
             val runtimeUri = Uri.parse(lease.request.uri)
-            if (runtimeUri.scheme !in setOf("https", "http") || runtimeUri.host.isNullOrBlank() || runtimeUri.userInfo != null) reject(ErrorCode.URL_REJECTED)
-            // Production extractor admits HTTPS. Cleartext is useful only for loopback debug fixtures.
-            if (runtimeUri.scheme == "http" && runtimeUri.host != "127.0.0.1") reject(ErrorCode.URL_REJECTED)
+            if (
+                runtimeUri.scheme !in setOf("https", "http") ||
+                    runtimeUri.host.isNullOrBlank() ||
+                    runtimeUri.userInfo != null
+            )
+                reject(ErrorCode.URL_REJECTED)
+            // Production extractor admits HTTPS. Cleartext is useful only for loopback debug
+            // fixtures.
+            if (runtimeUri.scheme == "http" && runtimeUri.host != "127.0.0.1")
+                reject(ErrorCode.URL_REJECTED)
             val calls = factory.callFactoryFor(lease.networkGeneration)
             val inspectedCalls = Call.Factory { request ->
                 ResponseInspectingCall(calls.newCall(request)) { response ->
-                    val observed = DownloadResponse(asset, lease.representation,
-                        dataSpec.position, dataSpec.length, response.code, response.headers.toMultimap())
-                    val result = if (attempt != null) checkNotNull(factory.recovery).inspect(observed, attempt)
+                    val observed =
+                        DownloadResponse(
+                            asset,
+                            lease.representation,
+                            dataSpec.position,
+                            dataSpec.length,
+                            response.code,
+                            response.headers.toMultimap(),
+                        )
+                    val result =
+                        if (attempt != null)
+                            checkNotNull(factory.recovery).inspect(observed, attempt)
                         else factory.inspector.inspect(observed)
                     if (result is AppResult.Failure) {
                         rejection = result.error
@@ -90,35 +131,73 @@ internal class DownloadDataSource private constructor(private val factory: Facto
             }
             val source = OkHttpDataSource.Factory(inspectedCalls).createDataSource()
             upstream = source
-            // Transfer listeners see only stable requests. No runtime DataSpec is forwarded to them.
+            // Transfer listeners see only stable requests. No runtime DataSpec is forwarded to
+            // them.
             listeners.forEach { it.onTransferInitializing(this, dataSpec, true) }
-            val length = source.open(dataSpec.buildUpon().setUri(runtimeUri)
-                .setHttpRequestHeaders(lease.request.headers.filterKeys { !it.equals("Proxy-Authorization", true) && !it.equals("Accept-Encoding", true) } + ("Accept-Encoding" to "identity")).build())
+            val length =
+                source.open(
+                    dataSpec
+                        .buildUpon()
+                        .setUri(runtimeUri)
+                        .setHttpRequestHeaders(
+                            lease.request.headers.filterKeys {
+                                !it.equals("Proxy-Authorization", true) &&
+                                    !it.equals("Accept-Encoding", true)
+                            } + ("Accept-Encoding" to "identity")
+                        )
+                        .build()
+                )
             listeners.forEach { it.onTransferStart(this, dataSpec, true) }
             openedSpec = dataSpec
             return length
-        } catch (cancelled: CancellationException) { close(); throw cancelled }
-        catch (failure: DownloadFailure) { close(); throw failure }
-        catch (failure: Exception) { close(); throw DownloadFailure(downloadError(failure, "download.open")) }
+        } catch (cancelled: CancellationException) {
+            close()
+            throw cancelled
+        } catch (failure: DownloadFailure) {
+            close()
+            throw failure
+        } catch (failure: Exception) {
+            close()
+            throw DownloadFailure(downloadError(failure, "download.open"))
+        }
     }
 
     private var openedSpec: DataSpec? = null
-    override fun read(buffer: ByteArray, offset: Int, length: Int): Int = try {
-        val count = checkNotNull(upstream).read(buffer, offset, length)
-        if (count > 0) openedSpec?.let { spec -> listeners.forEach { it.onBytesTransferred(this, spec, true, count) } }
-        count
-    } catch (cancelled: CancellationException) { throw cancelled }
-    catch (failure: Exception) { throw DownloadFailure(downloadError(failure, "download.read")) }
+
+    override fun read(buffer: ByteArray, offset: Int, length: Int): Int =
+        try {
+            val count = checkNotNull(upstream).read(buffer, offset, length)
+            if (count > 0)
+                openedSpec?.let { spec ->
+                    listeners.forEach { it.onBytesTransferred(this, spec, true, count) }
+                }
+            count
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            throw DownloadFailure(downloadError(failure, "download.read"))
+        }
 
     override fun getUri(): Uri? = stableUri
+
     override fun getResponseHeaders(): Map<String, List<String>> = emptyMap()
-    override fun addTransferListener(transferListener: TransferListener) { listeners += transferListener }
+
+    override fun addTransferListener(transferListener: TransferListener) {
+        listeners += transferListener
+    }
+
     override fun close() {
-        try { upstream?.close() } catch (_: IOException) { /* No raw runtime exception escapes. */ }
+        try {
+            upstream?.close()
+        } catch (_: IOException) {
+            /* No raw runtime exception escapes. */
+        }
         upstream = null
         openedSpec?.let { spec -> listeners.forEach { it.onTransferEnd(this, spec, true) } }
-        openedSpec = null; stableUri = null
+        openedSpec = null
+        stableUri = null
     }
+
     private fun reject(code: ErrorCode): Nothing {
         val error = AppError(code, "download.open", false)
         rejection = error
@@ -142,22 +221,42 @@ internal fun isProgressiveAudio(mime: String): Boolean {
 }
 
 /** The inspection happens before the response reaches Media3, including its async HTTP path. */
-private class ResponseInspectingCall(private val delegate: Call, private val inspect: (Response) -> Response) : Call by delegate {
+private class ResponseInspectingCall(
+    private val delegate: Call,
+    private val inspect: (Response) -> Response,
+) : Call by delegate {
     override fun execute(): Response {
         val response = delegate.execute()
-        return try { inspect(response) } catch (failure: Exception) { response.close(); throw failure }
-    }
-    override fun enqueue(responseCallback: Callback) = delegate.enqueue(object : Callback {
-        override fun onFailure(call: Call, e: IOException) = responseCallback.onFailure(call, e)
-        override fun onResponse(call: Call, response: Response) {
-            val checked = try { inspect(response) }
-            catch (failure: Exception) {
-                response.close()
-                responseCallback.onFailure(call, DownloadFailure(downloadError(failure, "download.response")))
-                return
-            }
-            responseCallback.onResponse(call, checked)
+        return try {
+            inspect(response)
+        } catch (failure: Exception) {
+            response.close()
+            throw failure
         }
-    })
+    }
+
+    override fun enqueue(responseCallback: Callback) =
+        delegate.enqueue(
+            object : Callback {
+                override fun onFailure(call: Call, e: IOException) =
+                    responseCallback.onFailure(call, e)
+
+                override fun onResponse(call: Call, response: Response) {
+                    val checked =
+                        try {
+                            inspect(response)
+                        } catch (failure: Exception) {
+                            response.close()
+                            responseCallback.onFailure(
+                                call,
+                                DownloadFailure(downloadError(failure, "download.response")),
+                            )
+                            return
+                        }
+                    responseCallback.onResponse(call, checked)
+                }
+            }
+        )
+
     override fun clone(): Call = ResponseInspectingCall(delegate.clone(), inspect)
 }

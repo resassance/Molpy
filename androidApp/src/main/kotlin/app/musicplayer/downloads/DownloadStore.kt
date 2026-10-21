@@ -399,7 +399,7 @@ internal class DownloadStore(
             download.request.uri.toString() != StableCacheIdentity.uri(id) ||
                 download.request.customCacheKey != asset.storageKey
         ) {
-            val failure = AppError(ErrorCode.INCOMPATIBLE_RESOURCE, "download.index", false)
+            val failure = AppError(ErrorCode.RESOURCE_CHANGED, "download.index", false)
             repository.saveMapping(asset.copy(state = DownloadState.FAILED))
             fail(id, failure)
             refresh()
@@ -414,7 +414,7 @@ internal class DownloadStore(
                     stamp.source != asset.source ||
                     stamp.representationId != asset.representation.id
             ) {
-                val invalid = AppError(ErrorCode.INCOMPATIBLE_RESOURCE, "download.stamp", false)
+                val invalid = AppError(ErrorCode.RESOURCE_CHANGED, "download.stamp", false)
                 recovery.reject(asset, recovery.attempt(asset), true, invalid)
                 repository.saveMapping(asset.copy(state = DownloadState.FAILED))
                 fail(id, invalid)
