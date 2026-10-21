@@ -1,13 +1,15 @@
 package app.musicplayer.ui.player
 
 import androidx.compose.foundation.*
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -26,6 +28,7 @@ fun MiniPlayer(
 ) {
     val track = state.currentTrack ?: return
     val color = MaterialTheme.colorScheme.primary
+    val open by rememberUpdatedState(onOpen)
     Box(
         Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
             .fillMaxWidth()
@@ -33,6 +36,20 @@ fun MiniPlayer(
             .clip(RoundedCornerShape(14.dp))
             .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.9f))
             .border(1.dp, color.copy(alpha = 0.3f), RoundedCornerShape(14.dp))
+            .pointerInput(Unit) {
+                var distance = 0f
+                detectVerticalDragGestures(
+                    onDragStart = { distance = 0f },
+                    onDragCancel = { distance = 0f },
+                    onDragEnd = {
+                        if (distance < -24.dp.toPx()) open()
+                        distance = 0f
+                    },
+                ) { change, amount ->
+                    change.consume()
+                    distance += amount
+                }
+            }
             .testTag("mini-player")
     ) {
         Row(

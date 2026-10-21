@@ -184,30 +184,29 @@ fun MolpyApp(
                         }
                     }
                 }
-                if (AppOverlay.NowPlaying in nav.overlays)
-                    Surface(Modifier.fillMaxSize()) {
-                        NowPlayingScreen(
-                            player,
-                            models.player,
-                            artwork,
-                            track?.id in favoriteIds,
-                            {
-                                track?.let { value ->
-                                    scope.launch {
-                                        action {
-                                            models.actions.favorite(value, value.id !in favoriteIds)
-                                        }
-                                    }
+                NowPlayingScreen(
+                    player,
+                    models.player,
+                    artwork,
+                    track?.id in favoriteIds,
+                    {
+                        track?.let { value ->
+                            scope.launch {
+                                action {
+                                    models.actions.favorite(value, value.id !in favoriteIds)
                                 }
-                            },
-                            { navigation.back() },
-                            { navigation.open(AppOverlay.Queue) },
-                            { navigation.open(AppOverlay.Lyrics) },
-                            ::menu,
-                            { navigation.push(AppRoute.Artist(it)) },
-                            { navigation.push(AppRoute.Album(it)) },
-                        )
-                    }
+                            }
+                        }
+                    },
+                    { navigation.back() },
+                    { navigation.open(AppOverlay.Queue) },
+                    { navigation.open(AppOverlay.Lyrics) },
+                    ::menu,
+                    { navigation.push(AppRoute.Artist(it)) },
+                    { navigation.push(AppRoute.Album(it)) },
+                    visible = AppOverlay.NowPlaying in nav.overlays,
+                    gesturesEnabled = nav.overlays.lastOrNull() == AppOverlay.NowPlaying,
+                )
                 when (val overlay = nav.overlays.lastOrNull()) {
                     AppOverlay.Queue ->
                         QueueSheet(player, models.player, artwork) { navigation.back() }

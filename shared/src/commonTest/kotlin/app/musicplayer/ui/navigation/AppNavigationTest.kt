@@ -5,6 +5,26 @@ import kotlin.test.*
 
 class AppNavigationTest {
     @Test
+    fun reselectingActiveTabReturnsToRootAndPreservesOtherStacks() {
+        val nav = AppNavigation()
+        nav.push(AppRoute.Downloads)
+        nav.select(AppTab.PROFILE)
+        nav.push(AppRoute.History)
+        nav.select(AppTab.LIBRARY)
+        assertEquals(AppRoute.Downloads, nav.state.value.current)
+        nav.select(AppTab.LIBRARY)
+        assertEquals(AppRoute.Root(AppTab.LIBRARY), nav.state.value.current)
+        assertFalse(nav.back())
+        nav.select(AppTab.PROFILE)
+        assertEquals(AppRoute.History, nav.state.value.current)
+        val restored = AppNavigation.restore(nav.save())
+        restored.select(AppTab.LIBRARY)
+        assertEquals(AppRoute.Root(AppTab.LIBRARY), restored.state.value.current)
+        restored.select(AppTab.PROFILE)
+        assertEquals(AppRoute.History, restored.state.value.current)
+    }
+
+    @Test
     fun tabsKeepTheirOwnStackAndBackClosesExactlyOneOverlay() {
         val nav = AppNavigation()
         assertEquals(AppTab.LIBRARY, nav.state.value.selectedTab)

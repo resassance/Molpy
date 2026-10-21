@@ -24,6 +24,14 @@ class PlayerModel(
     private var lyricsGeneration = 0L
     private var lyricsJob: Job? = null
 
+    private data class MotionRequest(
+        val from: QueueEntryId?,
+        val to: QueueEntryId,
+        val direction: TrackMotion,
+    )
+
+    private var motionRequest: MotionRequest? = null
+
     private data class LyricsBinding(
         val entryId: QueueEntryId?,
         val trackId: TrackId?,
@@ -35,6 +43,27 @@ class PlayerModel(
     init {
         scope.launch {
             player.snapshot.collect { snapshot ->
+                val prior = mutable.value.snapshot.current?.id
+                val next = snapshot.current?.id
+                val changedEntry = prior != next
+                val direction =
+                    if (changedEntry) {
+                        val requested = motionRequest
+                        motionRequest = null
+                        if (requested != null && requested.from == prior && requested.to == next)
+                            requested.direction
+                        else {
+                            val entries = player.queue.value.entries
+                            val before = entries.indexOfFirst { it.id == prior }
+                            val after = entries.indexOfFirst { it.id == next }
+                            when {
+                                before < 0 || after < 0 -> TrackMotion.REPLACE
+                                after == before + 1 -> TrackMotion.NEXT
+                                after == before - 1 -> TrackMotion.PREVIOUS
+                                else -> TrackMotion.REPLACE
+                            }
+                        }
+                    } else mutable.value.trackMotion
                 val nextBinding =
                     LyricsBinding(snapshot.current?.id, snapshot.track?.id, snapshot.candidateId)
                 val changed = binding != nextBinding
@@ -46,6 +75,7 @@ class PlayerModel(
                 mutable.update {
                     it.copy(
                         snapshot = snapshot,
+                        trackMotion = direction,
                         queueTracks =
                             it.queueTracks +
                                 listOfNotNull(snapshot.track).associateBy { track -> track.id },
@@ -117,11 +147,13 @@ class PlayerModel(
     }
 
     fun next() = command {
+        requestMotion(QueueCommand.Next, TrackMotion.NEXT)
         player.dispatch(QueueCommand.Next)
         AppResult.Success(Unit)
     }
 
     fun previous() = command {
+        requestMotion(QueueCommand.Previous, TrackMotion.PREVIOUS)
         player.dispatch(QueueCommand.Previous)
         AppResult.Success(Unit)
     }
@@ -147,7 +179,22 @@ class PlayerModel(
     fun selectEntry(id: QueueEntryId) {
         val entry = state.value.queue.entries.find { it.id == id } ?: return
         val track = state.value.queueTracks[entry.trackId] ?: return
-        command { player.select(track, entry, 0, true) }
+        command {
+            motionRequest =
+                MotionRequest(player.snapshot.value.current?.id, id, TrackMotion.REPLACE)
+            player.select(track, entry, 0, true)
+        }
+    }
+
+    private fun requestMotion(command: QueueCommand, direction: TrackMotion) {
+        val queue = player.queue.value
+        val target = QueueReducer.reduce(queue, command).snapshot.currentEntryId
+        motionRequest =
+            target
+                ?.takeIf { it != queue.currentEntryId }
+                ?.let {
+                    MotionRequest(player.snapshot.value.current?.id, it, direction)
+                }
     }
 
     fun moveEntry(id: QueueEntryId, toIndex: Int) = command {

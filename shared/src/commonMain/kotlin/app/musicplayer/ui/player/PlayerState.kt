@@ -11,6 +11,7 @@ data class PlayerState(
     val lyricsError: AppError? = null,
     val commandError: AppError? = null,
     val repositoryError: AppError? = null,
+    val trackMotion: TrackMotion = TrackMotion.REPLACE,
 ) {
     val effectiveDurationMs: Long?
         get() =

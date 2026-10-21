@@ -64,7 +64,16 @@ class AppNavigation(initial: NavigationState = NavigationState()) {
     val state: StateFlow<NavigationState> = mutable.asStateFlow()
 
     fun select(tab: AppTab) {
-        mutable.value = mutable.value.copy(selectedTab = tab, overlays = emptyList())
+        val current = mutable.value
+        mutable.value =
+            current.copy(
+                selectedTab = tab,
+                stacks =
+                    if (tab == current.selectedTab)
+                        current.stacks + (tab to listOf(AppRoute.Root(tab)))
+                    else current.stacks,
+                overlays = emptyList(),
+            )
     }
 
     fun push(route: AppRoute) {
