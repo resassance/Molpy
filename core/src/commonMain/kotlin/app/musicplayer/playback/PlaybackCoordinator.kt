@@ -44,6 +44,7 @@ class PlaybackCoordinator(
                     ?.takeIf { actual.status == PlayerStatus.FAILED }
                     ?.let { error ->
                         record("engine", error.code)
+                        if (activeLocal == null) actual.candidateId?.let(resolver::invalidate)
                         if (activeLocal != null) {
                             val failedAsset = activeLocal!!
                             scope.launch { sourceSelector.localFailed(failedAsset) }
@@ -153,6 +154,8 @@ class PlaybackCoordinator(
                         throw CancellationException("Superseded selection")
                     when (loaded) {
                         is AppResult.Failure -> {
+                            if (activeLocal == null)
+                                state.value.candidateId?.let(resolver::invalidate)
                             activeLocal?.let { sourceSelector.localFailed(it) }
                             if (
                                 activeLocal != null ||

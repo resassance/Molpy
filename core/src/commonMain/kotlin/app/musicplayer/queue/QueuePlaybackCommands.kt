@@ -9,7 +9,13 @@ import kotlinx.coroutines.ensureActive
 class QueuePlaybackCommands(
     private val queue: QueueController,
     private val remember: suspend (Track) -> AppResult<Unit>,
+    private val rememberList: (suspend (List<Track>) -> AppResult<Unit>)?,
 ) {
+    constructor(
+        queue: QueueController,
+        remember: suspend (Track) -> AppResult<Unit>,
+    ) : this(queue, remember, null)
+
     private var generation = 0L
 
     suspend fun playList(tracks: List<Track>, startIndex: Int): AppResult<Unit> {
@@ -17,11 +23,16 @@ class QueuePlaybackCommands(
             return AppResult.Failure(AppError(ErrorCode.INVALID_CONFIG, "queue.list", false))
         val selected = ++generation
         val frozen = tracks.toList()
-        for (track in frozen) {
-            val result = remember(track)
+        if (rememberList != null) {
+            val result = rememberList.invoke(frozen)
             checkCurrent(selected)
             if (result is AppResult.Failure) return result
-        }
+        } else
+            for (track in frozen) {
+                val result = remember(track)
+                checkCurrent(selected)
+                if (result is AppResult.Failure) return result
+            }
         val entries = frozen.map { QueueEntry(QueueEntryId(Uuid.random().toString()), it.id) }
         return queue.replace(entries, entries[startIndex].id) { selected == generation }
     }

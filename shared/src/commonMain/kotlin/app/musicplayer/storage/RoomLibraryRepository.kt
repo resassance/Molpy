@@ -33,6 +33,14 @@ class RoomLibraryRepository(private val database: MusicDatabase, private val now
         write { trackRecords.upsert(track, nowMs()) }
     }
 
+    override suspend fun upsertAll(tracks: List<Track>) {
+        if (tracks.isEmpty()) return
+        write {
+            val atMs = nowMs()
+            tracks.forEach { trackRecords.upsert(it, atMs) }
+        }
+    }
+
     override suspend fun getTrack(id: TrackId): Track? = read { trackRecords.load(id) }
 
     suspend fun retainedArtworkKeys(): Set<String> = read { dao.retainedArtworkKeys().toSet() }

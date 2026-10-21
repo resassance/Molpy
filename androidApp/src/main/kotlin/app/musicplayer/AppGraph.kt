@@ -226,12 +226,17 @@ internal class PlaybackRuntime(
     private val local = OfflineMediaSource(downloads.cache)
     val engine =
         AndroidPlayerEngine(context, network.transport::callFactoryFor, local.dataSourceFactory)
+    private var extractionWarmup: Job? = null
     private var extraction: ExtractionSession? =
         if (network.context.value.ready) newExtraction() else null
     private var reconnect: Job? = null
     @Volatile private var closed = false
     private val resolver =
         object : PlaybackResolver {
+            override fun invalidate(candidateId: CandidateId) {
+                extraction?.resolver?.invalidate(candidateId)
+            }
+
             override suspend fun resolve(
                 candidate: PlaybackCandidate,
                 capabilities: PlaybackCapabilities,
@@ -300,9 +305,13 @@ internal class PlaybackRuntime(
                         reconnect?.cancel()
                         reconnect = null
                         if (!closed && scope.isActive) coordinator.networkInvalidated()
-                        extraction.also { extraction = null }
+                        val warmup = extractionWarmup
+                        warmup?.cancel()
+                        extractionWarmup = null
+                        extraction.also { extraction = null } to warmup
                     }
-                previous?.close()
+                previous.second?.join()
+                previous.first?.close()
             }
 
             override suspend fun activated(context: NetworkContext) {
@@ -327,11 +336,24 @@ internal class PlaybackRuntime(
 
     private fun newExtraction() =
         ExtractionFactory.create(
-            network.transport.http,
-            AndroidTokenProvider { network.context.value },
-            System::currentTimeMillis,
-            { network.context.value.generation },
-        )
+                network.transport.http,
+                AndroidTokenProvider { network.context.value },
+                System::currentTimeMillis,
+                { network.context.value.generation },
+            )
+            .also { session ->
+                extractionWarmup =
+                    scope.launch(Dispatchers.Default) {
+                        try {
+                            withTimeoutOrNull(12_000) { session.prewarm() }
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (_: Exception) {
+                            // Preparation is optional; playback still uses the normal extraction
+                            // path.
+                        }
+                    }
+            }
 
     suspend fun closeExtraction() {
         closed = true
@@ -340,8 +362,12 @@ internal class PlaybackRuntime(
             withContext(Dispatchers.Main.immediate) {
                 reconnect?.cancel()
                 reconnect = null
-                extraction.also { extraction = null }
+                val warmup = extractionWarmup
+                warmup?.cancel()
+                extractionWarmup = null
+                extraction.also { extraction = null } to warmup
             }
-        previous?.close()
+        previous.second?.join()
+        previous.first?.close()
     }
 }

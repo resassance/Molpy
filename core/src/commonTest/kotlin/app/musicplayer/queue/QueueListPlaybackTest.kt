@@ -10,6 +10,65 @@ import kotlinx.coroutines.test.*
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class QueueListPlaybackTest {
+    @Test
+    fun aLateMetadataBatchCannotReplaceANewerSelection() = runTest {
+        val engine = Engine()
+        val tracks = mutableMapOf<TrackId, Track>()
+        val queue = queue(backgroundScope, engine, tracks)
+        val gate = CompletableDeferred<Unit>()
+        val commands =
+            QueuePlaybackCommands(
+                queue,
+                { fail("Expected a batch") },
+                { batch ->
+                    if (batch.first().id == a.id) withContext(NonCancellable) { gate.await() }
+                    batch.forEach { tracks[it.id] = it }
+                    AppResult.Success(Unit)
+                },
+            )
+        val old = launch { commands.playList(listOf(a), 0) }
+        runCurrent()
+        commands.playList(listOf(b), 0)
+        gate.complete(Unit)
+        old.join()
+        runCurrent()
+        assertEquals(listOf(b.id), queue.state.value.entries.map { it.trackId })
+        assertEquals(b.id, engine.snapshot.value.track?.id)
+    }
+
+    @Test
+    fun aPlaylistUsesOneMetadataBatchBeforeInstallingItsOccurrences() = runTest {
+        val engine = Engine()
+        val tracks = mutableMapOf<TrackId, Track>()
+        val queue = queue(backgroundScope, engine, tracks)
+        val batches = mutableListOf<List<Track>>()
+        val commands =
+            QueuePlaybackCommands(
+                queue,
+                remember = { fail("List playback must use the batch boundary") },
+                rememberList = { batch ->
+                    batches += batch
+                    batch.forEach { tracks[it.id] = it }
+                    AppResult.Success(Unit)
+                },
+            )
+        assertIs<AppResult.Success<Unit>>(commands.playList(listOf(a, a, b), 1))
+        assertEquals(listOf(listOf(a, a, b)), batches)
+        assertEquals(listOf(a.id, a.id, b.id), queue.state.value.entries.map { it.trackId })
+        assertEquals(a.id, engine.snapshot.value.track?.id)
+        val before = queue.state.value
+        val failed =
+            QueuePlaybackCommands(
+                queue,
+                { AppResult.Success(Unit) },
+                {
+                    AppResult.Failure(AppError(ErrorCode.DATABASE, "fixture.batch", true))
+                },
+            )
+        assertEquals(ErrorCode.DATABASE, failed.playList(listOf(b), 0).errorOrNull()?.code)
+        assertEquals(before, queue.state.value)
+    }
+
     private val a = Fixtures.track("a", sourceId = "a")
     private val b = Fixtures.track("b", sourceId = "b")
     private val network =

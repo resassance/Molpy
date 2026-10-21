@@ -9,6 +9,35 @@ import kotlinx.coroutines.test.*
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class PlaybackCoordinatorTest {
+    @Test
+    fun rejectedMediaLeaseIsInvalidatedBeforeAutomaticRecovery() = runTest {
+        val engine = CallbackEngine()
+        val order = mutableListOf<String>()
+        val provider =
+            object : PlaybackResolver {
+                override suspend fun resolve(
+                    candidate: PlaybackCandidate,
+                    capabilities: PlaybackCapabilities,
+                    network: NetworkContext,
+                ): AppResult<ResolvedPlayback> {
+                    order += "resolve"
+                    return AppResult.Success(lease(candidate))
+                }
+
+                override fun invalidate(candidateId: CandidateId) {
+                    order += "invalidate:${candidateId.value}"
+                }
+            }
+        val coordinator = PlaybackCoordinator(engine, provider, { network }, backgroundScope)
+        coordinator.select(a, entry(a), 0, true)
+        engine.callback(PlayerStatus.FAILED, error = ErrorCode.URL_REJECTED)
+        runCurrent()
+        assertEquals(
+            listOf("resolve", "invalidate:${a.candidates.single().id.value}", "resolve"),
+            order,
+        )
+    }
+
     private val network =
         NetworkContext(0, NetworkConfig(NetworkMode.SYSTEM, null, null), true, true)
     private val a = Fixtures.track("a", sourceId = "a")
@@ -527,6 +556,11 @@ class PlaybackCoordinatorTest {
                     null,
                     playWhenReady,
                     loadId = (source as? PlayableSource.Remote)?.loadId,
+                    candidateId =
+                        when (source) {
+                            is PlayableSource.Remote -> source.lease.candidateId
+                            is PlayableSource.Local -> source.candidateId
+                        },
                 )
             return AppResult.Success(Unit)
         }

@@ -24,7 +24,12 @@ class PlaybackService : MediaSessionService() {
         val graph = (application as MusicApplication).graph
         runtime = graph.createPlayback(scope)
         val controller = runtime.queue
-        val commands = QueuePlaybackCommands(controller, runtime.persistence::remember)
+        val commands =
+            QueuePlaybackCommands(
+                controller,
+                runtime.persistence::remember,
+                runtime.persistence::rememberAll,
+            )
         scope.launch { runtime.coordinator.snapshot.collect { controller.onPlayback(it) } }
         host =
             object : QueuePlaybackPort {

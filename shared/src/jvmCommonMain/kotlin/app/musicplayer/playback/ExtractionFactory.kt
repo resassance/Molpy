@@ -7,15 +7,16 @@ import com.metrolist.innertubex.extraction.InnerTubeExtractor
 import com.metrolist.innertubex.extraction.TokenProvider
 import com.metrolist.innertubex.extraction.YtConfigParserImpl
 import io.ktor.client.HttpClient
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
-import java.util.concurrent.atomic.AtomicBoolean
 
 object ExtractionFactory {
     /**
      * The host owns the configured HTTP client and optional token provider. A fresh anonymous
      * InnerTube session has no Google cookies, account discovery, or optional remote config store.
-     * Construction performs no requests or prewarming. The host supplies a generation-routed client.
+     * Construction performs no requests or prewarming. The host supplies a generation-routed
+     * client.
      */
     fun create(
         httpClient: HttpClient,
@@ -23,29 +24,57 @@ object ExtractionFactory {
         nowMs: () -> Long,
         currentNetworkGeneration: () -> Long,
         diagnostics: (ResolverDiagnostic) -> Unit = {},
+        reuseLeases: Boolean = true,
     ): ExtractionSession {
         val innerTube = InnerTube(httpClient)
         val cipher = YouTubeCipherService(httpClient)
         val parser = YtConfigParserImpl(httpClient, innerTube, cipherService = cipher)
         val extractor = InnerTubeExtractor(parser, cipher, innerTube, tokenProvider = tokenProvider)
         return ExtractionSession(
-            InnerTubePlaybackResolver(extractor, nowMs, currentNetworkGeneration, diagnostics), innerTube, cipher,
+            InnerTubePlaybackResolver(
+                extractor,
+                nowMs,
+                currentNetworkGeneration,
+                diagnostics,
+                reuseLeases,
+            ),
+            innerTube,
+            cipher,
+            extractor::prewarm,
         )
     }
 }
 
-/** Owns its anonymous library session and native cipher resources; it borrows HTTP/token services. */
-class ExtractionSession internal constructor(
+/**
+ * Owns its anonymous library session and native cipher resources; it borrows HTTP/token services.
+ */
+class ExtractionSession
+internal constructor(
     private val delegate: PlaybackResolver,
     private val innerTube: InnerTube,
     private val cipher: YouTubeCipherService,
+    private val prepare: suspend () -> Unit,
 ) {
-    private val closed = AtomicBoolean(false)
-    val resolver: PlaybackResolver = object : PlaybackResolver {
-        override suspend fun resolve(candidate: PlaybackCandidate, capabilities: PlaybackCapabilities, network: NetworkContext): AppResult<ResolvedPlayback> =
-            if (closed.get()) AppResult.Failure(AppError(ErrorCode.SOURCE_UNAVAILABLE, "playback.resolve", false))
-            else delegate.resolve(candidate, capabilities, network)
+    suspend fun prewarm() {
+        if (!closed.get()) prepare()
     }
+
+    private val closed = AtomicBoolean(false)
+    val resolver: PlaybackResolver =
+        object : PlaybackResolver {
+            override fun invalidate(candidateId: CandidateId) = delegate.invalidate(candidateId)
+
+            override suspend fun resolve(
+                candidate: PlaybackCandidate,
+                capabilities: PlaybackCapabilities,
+                network: NetworkContext,
+            ): AppResult<ResolvedPlayback> =
+                if (closed.get())
+                    AppResult.Failure(
+                        AppError(ErrorCode.SOURCE_UNAVAILABLE, "playback.resolve", false)
+                    )
+                else delegate.resolve(candidate, capabilities, network)
+        }
 
     suspend fun close() {
         if (closed.compareAndSet(false, true)) {
