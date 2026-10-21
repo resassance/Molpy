@@ -42,9 +42,11 @@ No Molpy account or dedicated backend is required. Google sign-in is not impleme
 | Search | YouTube Music catalog, YouTube search fallback, track titles, artists, albums, and artwork |
 | Player | Play, pause, seek, next and previous track, position, and duration |
 | Queue | Add, remove, select, and reorder entries; keep the queue between launches |
-| Library | Favorites and listening history stored on the device |
+| Library | Favorites, local playlists, albums, and artists; downloads in a separate section |
+| Profile | Total listening time, most-played tracks and artists with listening time, and history |
+| Appearance | Dark interface with colors from the current artwork, a mini player, and a full-screen player |
 | Background playback | Android media session and system playback controls |
-| Lyrics | Plain and synced lyrics from YouTube Music and LRCLIB when available for the recording |
+| Lyrics | YouTube Music and LRCLIB; the current line in the player and full lyrics when available for the recording |
 | Network | System connection, HTTP CONNECT proxy with no authentication or username/password, and SOCKS5 without authentication |
 | Downloads | One track at a time, pause and resume, deletion, storage usage, and local playback |
 
@@ -56,9 +58,8 @@ After restarting the app, the queue is restored on pause. Press Play to continue
 - **Offline storage:** downloads stay inside the app. Uninstalling Molpy or clearing its data deletes downloaded music. Export to the shared Music folder is not available yet.
 - **Formats:** downloads use a single progressive audio stream without transcoding; offline HLS and DASH are not supported. Compatibility depends on the recording format and Android codecs.
 - **Background downloads:** Android may pause them due to system restrictions. After force-stopping the app, open it to continue.
-- **Interface:** the app currently uses simple player, search, library, and downloads screens. A separate visual design is the next step.
 
-Next comes the Android app design. Windows and Linux are planned later, followed by web. Accounts, cloud sync, and integrations with other music services are outside the immediate scope.
+Windows and Linux are planned after Android, followed by web. Accounts, cloud sync, and integrations with other music services are outside the immediate scope.
 
 ## Install and try
 
@@ -67,8 +68,8 @@ Next comes the Android app design. Windows and Linux are planned later, followed
 1. Open [release v0.1.0-alpha.2](https://github.com/resassance/Molpy/releases/tag/v0.1.0-alpha.2) and download `Molpy-v0.1.0-alpha.2-debug.apk`.
 2. Install the APK, allowing installation from your chosen source in Android settings if prompted.
 3. If YouTube is unavailable on your network, enable a system VPN or configure a proxy in Molpy’s network settings.
-4. Open Molpy, enter an artist and title, press «Найти» (Search), and select a recording.
-5. Use the player controls to manage playback. Open «Текст песни» (Lyrics), add a track to favorites, or download it for offline listening.
+4. Search by artist and title and select a recording from the results.
+5. Use the player controls, open available lyrics, or add a recording to favorites. Downloaded tracks can be played offline.
 
 ## Build from source
 

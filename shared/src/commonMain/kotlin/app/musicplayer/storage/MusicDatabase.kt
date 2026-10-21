@@ -2,13 +2,38 @@ package app.musicplayer.storage
 
 import androidx.room.*
 
-@Database(entities = [TrackRecord::class, ExternalIdentityRecord::class, CandidateRecord::class,
-    FavoriteRecord::class, RecentRecord::class, QueueEntryRecord::class, QueueSnapshotRecord::class,
-    LyricsRecord::class, CatalogCacheRecord::class, SettingsRecord::class, OfflineRecord::class], version = 2, exportSchema = true)
+@Database(
+    entities =
+        [
+            TrackRecord::class,
+            ExternalIdentityRecord::class,
+            CandidateRecord::class,
+            FavoriteRecord::class,
+            RecentRecord::class,
+            QueueEntryRecord::class,
+            QueueSnapshotRecord::class,
+            LyricsRecord::class,
+            CatalogCacheRecord::class,
+            SettingsRecord::class,
+            OfflineRecord::class,
+            PlaylistRecord::class,
+            PlaylistItemRecord::class,
+            ListeningSessionRecord::class,
+            TrackListeningRecord::class,
+            ArtistListeningRecord::class,
+        ],
+    version = 3,
+    exportSchema = true,
+)
 @ConstructedBy(MusicDatabaseConstructor::class)
 abstract class MusicDatabase : RoomDatabase() {
     abstract fun dao(): MusicDao
+
     abstract fun offlineDao(): OfflineDao
+
+    abstract fun collectionDao(): CollectionDao
+
+    abstract fun listeningDao(): ListeningDao
 }
 
 @Suppress("KotlinNoActualForExpect")

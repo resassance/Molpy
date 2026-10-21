@@ -4,8 +4,9 @@ import androidx.room.Room
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import kotlinx.coroutines.Dispatchers
 
-fun createMusicDatabase(path: String): MusicDatabase = Room.databaseBuilder<MusicDatabase>(path)
-    .setDriver(BundledSQLiteDriver())
-    .addMigrations(Migration1To2)
-    .setQueryCoroutineContext(Dispatchers.IO)
-    .build()
+fun createMusicDatabase(path: String): MusicDatabase =
+    Room.databaseBuilder<MusicDatabase>(path)
+        .setDriver(BundledSQLiteDriver())
+        .addMigrations(Migration1To2, Migration2To3)
+        .setQueryCoroutineContext(Dispatchers.IO)
+        .build()

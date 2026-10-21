@@ -8,9 +8,9 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /**
- * Service-owned queue. Commands and [onPlayback] run on the engine owner's dispatcher.
- * The service collects coordinator callbacks into [onPlayback] for its own lifetime.
- * Only short state/effect setup is serialized: lookup/resolve never holds the command lock.
+ * Service-owned queue. Commands and [onPlayback] run on the engine owner's dispatcher. The service
+ * collects coordinator callbacks into [onPlayback] for its own lifetime. Only short state/effect
+ * setup is serialized: lookup/resolve never holds the command lock.
  */
 class QueueController(
     private val engine: PlayerEngine,
@@ -27,75 +27,166 @@ class QueueController(
 
     private var restoredPosition = false
 
-    /** Install durable metadata while paused. No resolver or engine load runs before explicit Play. */
+    /**
+     * Install durable metadata while paused. No resolver or engine load runs before explicit Play.
+     */
     suspend fun restore(snapshot: QueueSnapshot) = mutex.withLock {
         cancelSelection()
         coordinator.stop()
         val entries = snapshot.entries.distinctBy { it.id }.toList()
-        val current = entries.firstOrNull { it.id == snapshot.currentEntryId } ?: entries.firstOrNull()
-        val position = if (current?.id == snapshot.currentEntryId) snapshot.positionMs.coerceAtLeast(0) else 0
+        val current =
+            entries.firstOrNull { it.id == snapshot.currentEntryId } ?: entries.firstOrNull()
+        val position =
+            if (current?.id == snapshot.currentEntryId) snapshot.positionMs.coerceAtLeast(0) else 0
         mutableState.value = QueueSnapshot(entries, current?.id, position, false)
         val track = current?.let { lookup(it.trackId) }
-        mutableSnapshot.value = if (current == null) PlaybackSnapshot() else
-            PlaybackSnapshot(PlayerStatus.PAUSED, current, track, position, playWhenReady = false)
+        mutableSnapshot.value =
+            if (current == null) PlaybackSnapshot()
+            else
+                PlaybackSnapshot(
+                    PlayerStatus.PAUSED,
+                    current,
+                    track,
+                    position,
+                    playWhenReady = false,
+                )
         restoredPosition = current != null
     }
 
-    suspend fun dispatch(command: QueueCommand) { transition(command) }
+    suspend fun dispatch(command: QueueCommand, isCurrent: () -> Boolean = { true }) {
+        transition(command, isCurrent = isCurrent)
+    }
 
-    /** Bridge for the existing PlaybackPort: remember metadata in the service lookup before calling. */
-    suspend fun select(entry: QueueEntry, positionMs: Long, playWhenReady: Boolean): AppResult<Unit> =
-        transition(QueueCommand.Select(entry.id), entry, positionMs, playWhenReady)
+    suspend fun replace(
+        entries: List<QueueEntry>,
+        currentEntryId: QueueEntryId,
+        isCurrent: () -> Boolean = { true },
+    ): AppResult<Unit> =
+        try {
+            transition(QueueCommand.Replace(entries, currentEntryId), isCurrent = isCurrent)
+        } catch (_: IllegalArgumentException) {
+            AppResult.Failure(AppError(ErrorCode.INVALID_CONFIG, "queue.replace", false))
+        }
+
+    /**
+     * Bridge for the existing PlaybackPort: remember metadata in the service lookup before calling.
+     */
+    suspend fun select(
+        entry: QueueEntry,
+        positionMs: Long,
+        playWhenReady: Boolean,
+        isCurrent: () -> Boolean = { true },
+    ): AppResult<Unit> =
+        transition(QueueCommand.Select(entry.id), entry, positionMs, playWhenReady, isCurrent)
 
     private suspend fun transition(
         command: QueueCommand,
         addedEntry: QueueEntry? = null,
         positionMs: Long = 0,
         playWhenReady: Boolean? = null,
+        isCurrent: () -> Boolean = { true },
     ): AppResult<Unit> = coroutineScope {
         val pending = mutex.withLock {
+            ensureActive()
+            if (!isCurrent()) throw CancellationException("Superseded queue command")
             var before = mutableState.value
             if (addedEntry != null) {
                 val existing = before.entries.find { it.id == addedEntry.id }
-                require(existing == null || existing == addedEntry) { "Queue entry identity cannot change Track" }
-                if (existing == null) before = QueueReducer.reduce(before, QueueCommand.Add(listOf(addedEntry))).snapshot
+                require(existing == null || existing == addedEntry) {
+                    "Queue entry identity cannot change Track"
+                }
+                if (existing == null)
+                    before =
+                        QueueReducer.reduce(before, QueueCommand.Add(listOf(addedEntry))).snapshot
             }
-            if (command is QueueCommand.Select && before.entries.none { it.id == command.id }) return@withLock null
+            if (command is QueueCommand.Select && before.entries.none { it.id == command.id })
+                return@withLock null
             val reduced = QueueReducer.reduce(before, command)
-            val after = if (playWhenReady == null) reduced.snapshot else reduced.snapshot.copy(
-                positionMs = positionMs.coerceAtLeast(0), playWhenReady = playWhenReady,
-            )
+            val after =
+                if (playWhenReady == null) reduced.snapshot
+                else
+                    reduced.snapshot.copy(
+                        positionMs = positionMs.coerceAtLeast(0),
+                        playWhenReady = playWhenReady,
+                    )
             mutableState.value = after
             when {
-                reduced.stopPlayback -> { restoredPosition = false; cancelSelection(); coordinator.stop(); mutableSnapshot.value = PlaybackSnapshot(); null }
-                after.currentEntryId != null && (after.currentEntryId != before.currentEntryId || command is QueueCommand.Select ||
-                    (reduced.seekToMs != null && engine.snapshot.value.current?.id != after.currentEntryId)) -> {
+                reduced.stopPlayback -> {
+                    restoredPosition = false
+                    cancelSelection()
+                    coordinator.stop()
+                    mutableSnapshot.value = PlaybackSnapshot()
+                    null
+                }
+                after.currentEntryId != null &&
+                    (after.currentEntryId != before.currentEntryId ||
+                        command is QueueCommand.Select ||
+                        command is QueueCommand.Replace ||
+                        (reduced.seekToMs != null &&
+                            engine.snapshot.value.current?.id != after.currentEntryId)) -> {
                     restoredPosition = false
                     cancelSelection()
                     coordinator.stop()
                     val selectedGeneration = generation
                     val entry = after.entries.first { it.id == after.currentEntryId }
-                    mutableSnapshot.value = PlaybackSnapshot(PlayerStatus.RESOLVING, entry, positionMs = after.positionMs,
-                        playWhenReady = after.playWhenReady)
-                    // Starts lookup/resolve on the owner's dispatcher, but does not await it under the lock.
+                    mutableSnapshot.value =
+                        PlaybackSnapshot(
+                            PlayerStatus.RESOLVING,
+                            entry,
+                            positionMs = after.positionMs,
+                            playWhenReady = after.playWhenReady,
+                        )
+                    // Starts lookup/resolve on the owner's dispatcher, but does not await it under
+                    // the lock.
                     async(start = CoroutineStart.UNDISPATCHED) {
-                        val track = lookup(entry.trackId)
-                        ensureActive()
-                        if (selectedGeneration != generation) throw CancellationException("Superseded queue selection")
-                        if (track == null) {
-                            val error = AppError(ErrorCode.SOURCE_UNAVAILABLE, "queue.lookup", false)
-                            mutableSnapshot.value = mutableSnapshot.value.copy(status = PlayerStatus.FAILED, error = error)
-                            AppResult.Failure(error)
-                        } else {
-                            val result = coordinator.select(track, entry, mutableState.value.positionMs, mutableState.value.playWhenReady)
-                            if (selectedGeneration == generation) applyPlayback(coordinator.snapshot.value)
-                            result
+                            val track =
+                                try {
+                                    lookup(entry.trackId)
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (_: Exception) {
+                                    ensureActive()
+                                    if (selectedGeneration != generation)
+                                        throw CancellationException("Superseded queue selection")
+                                    val error = AppError(ErrorCode.DATABASE, "queue.lookup", true)
+                                    mutableSnapshot.value =
+                                        mutableSnapshot.value.copy(
+                                            status = PlayerStatus.FAILED,
+                                            error = error,
+                                        )
+                                    return@async AppResult.Failure(error)
+                                }
+                            ensureActive()
+                            if (selectedGeneration != generation)
+                                throw CancellationException("Superseded queue selection")
+                            if (track == null) {
+                                val error =
+                                    AppError(ErrorCode.SOURCE_UNAVAILABLE, "queue.lookup", false)
+                                mutableSnapshot.value =
+                                    mutableSnapshot.value.copy(
+                                        status = PlayerStatus.FAILED,
+                                        error = error,
+                                    )
+                                AppResult.Failure(error)
+                            } else {
+                                val result =
+                                    coordinator.select(
+                                        track,
+                                        entry,
+                                        mutableState.value.positionMs,
+                                        mutableState.value.playWhenReady,
+                                    )
+                                if (selectedGeneration == generation)
+                                    applyPlayback(coordinator.snapshot.value)
+                                result
+                            }
                         }
-                    }.also { selection = it }
+                        .also { selection = it }
                 }
                 reduced.seekToMs != null -> {
                     coordinator.seek(after.positionMs)
-                    mutableSnapshot.value = mutableSnapshot.value.copy(positionMs = after.positionMs)
+                    mutableSnapshot.value =
+                        mutableSnapshot.value.copy(positionMs = after.positionMs)
                     null
                 }
                 else -> null
@@ -108,8 +199,13 @@ class QueueController(
     suspend fun onPlayback(actual: PlaybackSnapshot) {
         val ended = mutex.withLock {
             val active = coordinator.snapshot.value
-            if (actual.current?.id != mutableState.value.currentEntryId || actual.current == null ||
-                actual.current != active.current || actual.loadId != active.loadId) return@withLock null
+            if (
+                actual.current?.id != mutableState.value.currentEntryId ||
+                    actual.current == null ||
+                    actual.current != active.current ||
+                    actual.loadId != active.loadId
+            )
+                return@withLock null
             applyPlayback(actual)
             actual.current.id.takeIf { actual.status == PlayerStatus.ENDED }
         }
@@ -117,7 +213,8 @@ class QueueController(
             try {
                 dispatch(QueueCommand.Ended(ended))
             } catch (_: CancellationException) {
-                // Interrupted selection work must not cancel collection; owner shutdown still propagates.
+                // Interrupted selection work must not cancel collection; owner shutdown still
+                // propagates.
                 currentCoroutineContext().ensureActive()
             }
         }
@@ -126,13 +223,20 @@ class QueueController(
     private fun applyPlayback(actual: PlaybackSnapshot) {
         if (actual.current == null || actual.current.id != mutableState.value.currentEntryId) return
         mutableSnapshot.value = actual
-        mutableState.value = mutableState.value.copy(positionMs = actual.positionMs, playWhenReady = actual.playWhenReady)
+        mutableState.value =
+            mutableState.value.copy(
+                positionMs = actual.positionMs,
+                playWhenReady = actual.playWhenReady,
+            )
     }
 
     suspend fun play() {
         val restart = mutex.withLock {
             val current = mutableState.value.currentEntryId ?: return@withLock null
-            if (engine.snapshot.value.current?.id != current && mutableSnapshot.value.status != PlayerStatus.RESOLVING) {
+            if (
+                engine.snapshot.value.current?.id != current &&
+                    mutableSnapshot.value.status != PlayerStatus.RESOLVING
+            ) {
                 return@withLock mutableState.value.entries.first { it.id == current }
             }
             coordinator.play()
@@ -146,18 +250,24 @@ class QueueController(
             select(restart, position, true)
         }
     }
+
     suspend fun pause() = mutex.withLock {
         coordinator.pause()
         mutableState.value = mutableState.value.copy(playWhenReady = false)
         mutableSnapshot.value = mutableSnapshot.value.copy(playWhenReady = false)
     }
+
     suspend fun seek(positionMs: Long) = mutex.withLock {
         if (mutableState.value.currentEntryId == null) return@withLock
-        val clamped = positionMs.coerceAtLeast(0).let { value -> mutableSnapshot.value.durationMs?.let(value::coerceAtMost) ?: value }
+        val clamped =
+            positionMs.coerceAtLeast(0).let { value ->
+                mutableSnapshot.value.durationMs?.let(value::coerceAtMost) ?: value
+            }
         coordinator.seek(clamped)
         mutableState.value = mutableState.value.copy(positionMs = clamped)
         mutableSnapshot.value = mutableSnapshot.value.copy(positionMs = clamped)
     }
+
     /** The explicit stop checkpoint is serialized before state clearing and later user commands. */
     suspend fun stop(checkpoint: suspend (QueueSnapshot) -> Unit = {}) = mutex.withLock {
         coordinator.pause()
@@ -170,5 +280,10 @@ class QueueController(
         mutableState.value = mutableState.value.copy(playWhenReady = false)
         mutableSnapshot.value = PlaybackSnapshot()
     }
-    private fun cancelSelection() { ++generation; selection?.cancel(); selection = null }
+
+    private fun cancelSelection() {
+        ++generation
+        selection?.cancel()
+        selection = null
+    }
 }

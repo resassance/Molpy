@@ -24,51 +24,131 @@ class PlaybackService : MediaSessionService() {
         val graph = (application as MusicApplication).graph
         runtime = graph.createPlayback(scope)
         val controller = runtime.queue
+        val commands = QueuePlaybackCommands(controller, runtime.persistence::remember)
         scope.launch { runtime.coordinator.snapshot.collect { controller.onPlayback(it) } }
-        host = object : QueuePlaybackPort {
-            override val snapshot = runtime.persistence.snapshot
-            override val queue = controller.state
-            override suspend fun select(track: Track, entry: QueueEntry, positionMs: Long, playWhenReady: Boolean): AppResult<Unit> {
-                require(track.id == entry.trackId) { "Queue entry and Track identity differ" }
-                return scope.async {
-                    runtime.startup.await()
-                    when (val saved = runtime.persistence.remember(track)) {
-                        is AppResult.Failure -> saved
-                        is AppResult.Success -> controller.select(entry, positionMs, playWhenReady)
+        host =
+            object : QueuePlaybackPort {
+                override val snapshot = runtime.persistence.snapshot
+                override val queue = controller.state
+
+                override suspend fun enqueue(track: Track): AppResult<Unit> =
+                    scope
+                        .async {
+                            runtime.startup.await()
+                            commands.enqueue(track)
+                        }
+                        .await()
+
+                override suspend fun playList(
+                    tracks: List<Track>,
+                    startIndex: Int,
+                ): AppResult<Unit> =
+                    scope
+                        .async {
+                            runtime.startup.await()
+                            commands.playList(tracks, startIndex)
+                        }
+                        .await()
+
+                override suspend fun select(
+                    track: Track,
+                    entry: QueueEntry,
+                    positionMs: Long,
+                    playWhenReady: Boolean,
+                ): AppResult<Unit> =
+                    scope
+                        .async {
+                            runtime.startup.await()
+                            commands.select(track, entry, positionMs, playWhenReady)
+                        }
+                        .await()
+
+                override suspend fun dispatch(command: QueueCommand) {
+                    scope
+                        .async {
+                            runtime.startup.await()
+                            commands.dispatch(command)
+                        }
+                        .await()
+                }
+
+                override fun play() {
+                    commands.invalidatePending()
+                    scope.launch {
+                        runtime.startup.await()
+                        controller.play()
                     }
-                }.await()
+                }
+
+                override fun pause() {
+                    commands.invalidatePending()
+                    scope.launch {
+                        runtime.startup.await()
+                        controller.pause()
+                    }
+                }
+
+                override fun seek(positionMs: Long) {
+                    commands.invalidatePending()
+                    scope.launch {
+                        runtime.startup.await()
+                        controller.seek(positionMs)
+                    }
+                }
+
+                override fun stop() {
+                    commands.invalidatePending()
+                    scope.launch {
+                        runtime.startup.await()
+                        runtime.persistence.stop()
+                    }
+                }
             }
-            override suspend fun dispatch(command: QueueCommand) { scope.async { runtime.startup.await(); controller.dispatch(command) }.await() }
-            override fun play() { scope.launch { runtime.startup.await(); controller.play() } }
-            override fun pause() { scope.launch { runtime.startup.await(); controller.pause() } }
-            override fun seek(positionMs: Long) { scope.launch { runtime.startup.await(); controller.seek(positionMs) } }
-            override fun stop() { scope.launch { runtime.startup.await(); runtime.persistence.stop() } }
-        }
-        // Media3 holds only the current resolved source; queue navigation belongs to the controller.
-        val sessionPlayer = QueueSessionPlayer(runtime.engine.player, host) { command ->
-            scope.launch { runtime.startup.await(); controller.dispatch(command) }
-        }
+        // Media3 holds only the current resolved source; queue navigation belongs to the
+        // controller.
+        val sessionPlayer =
+            QueueSessionPlayer(runtime.engine.player, host) { command ->
+                scope.launch {
+                    runtime.startup.await()
+                    commands.dispatch(command)
+                }
+            }
         session = MediaSession.Builder(this, sessionPlayer).build()
         scope.launch { controller.state.collect { sessionPlayer.onQueueChanged() } }
-        scope.launch { runtime.startup.await(); graph.playback.value = host }
+        scope.launch {
+            runtime.startup.await()
+            graph.playback.value = host
+        }
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        scope.launch { runtime.startup.await(); runtime.persistence.checkpoint() }
+        scope.launch {
+            runtime.startup.await()
+            runtime.persistence.checkpoint()
+            runtime.listening.checkpoint()
+        }
         super.onTaskRemoved(rootIntent)
     }
 
     override fun onDestroy() {
         val graph = (application as MusicApplication).graph
         if (graph.playback.value === host) graph.playback.value = null
+        runtime.listening.ownerStopped()
         scope.cancel()
         session?.release()
         session = null
-        // A separate teardown job survives owner cancellation. Save before release clears actual state.
+        // A separate teardown job survives owner cancellation. Save before release clears actual
+        // state.
         CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate).launch {
-            try { runtime.persistence.close() } finally {
+            try {
+                try {
+                    runtime.persistence.close()
+                } finally {
+                    runtime.listening.close()
+                }
+            } finally {
                 runtime.coordinator.release()
                 runtime.closeExtraction()
             }

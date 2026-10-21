@@ -39,6 +39,9 @@ dependencies {
     implementation(libs.webkit)
     testImplementation(libs.junit)
     androidTestImplementation(libs.android.test.runner)
+    androidTestImplementation(libs.android.test.rules)
     androidTestImplementation(libs.android.test.junit)
     androidTestImplementation(libs.room.runtime)
+    androidTestImplementation(libs.sqlite.bundled)
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4:1.12.1")
 }

@@ -1,11 +1,16 @@
 package app.musicplayer.queue
 
-import app.musicplayer.model.QueueSnapshot
+import app.musicplayer.model.*
 import app.musicplayer.playback.PlaybackPort
 import kotlinx.coroutines.flow.StateFlow
 
 /** Normalized service connection: UI and media controls share the same queue. */
 interface QueuePlaybackPort : PlaybackPort {
+    suspend fun enqueue(track: Track): AppResult<Unit>
+
+    suspend fun playList(tracks: List<Track>, startIndex: Int): AppResult<Unit>
+
     val queue: StateFlow<QueueSnapshot>
+
     suspend fun dispatch(command: QueueCommand)
 }

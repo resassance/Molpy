@@ -5,7 +5,9 @@ import app.musicplayer.model.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 
-/** Service-owned, dispatcher-confined orchestration. Resolve completion is never a playing event. */
+/**
+ * Service-owned, dispatcher-confined orchestration. Resolve completion is never a playing event.
+ */
 class PlaybackCoordinator(
     private val engine: PlayerEngine,
     private val resolver: PlaybackResolver,
@@ -31,33 +33,60 @@ class PlaybackCoordinator(
     private var resolving = false
     private val observation = scope.launch {
         engine.snapshot.collect { actual ->
-            if (!resolving && actual.current != null && actual.current == state.value.current &&
-                actual.loadId == activeLoadId) {
-                state.value = actual
-                actual.error?.takeIf { actual.status == PlayerStatus.FAILED }?.let { error ->
-                    record("engine", error.code)
-                    if (activeLocal != null) {
-                        val failedAsset = activeLocal!!
-                        scope.launch { sourceSelector.localFailed(failedAsset) }
-                    } else if (resolveOperations < 2 && recovery.shouldResolveAgain(error, attemptId())) {
-                        // Never await retry inside this sole engine observer: selections cancel retry work.
-                        resolving = true
-                        recoveryJob = scope.launch {
-                            try { resolveRetained() } catch (_: CancellationException) { currentCoroutineContext().ensureActive() }
+            if (
+                !resolving &&
+                    actual.current != null &&
+                    actual.current == state.value.current &&
+                    actual.loadId == activeLoadId
+            ) {
+                state.value = actual.copy(attemptId = attempt.value)
+                actual.error
+                    ?.takeIf { actual.status == PlayerStatus.FAILED }
+                    ?.let { error ->
+                        record("engine", error.code)
+                        if (activeLocal != null) {
+                            val failedAsset = activeLocal!!
+                            scope.launch { sourceSelector.localFailed(failedAsset) }
+                        } else if (
+                            resolveOperations < 2 && recovery.shouldResolveAgain(error, attemptId())
+                        ) {
+                            // Never await retry inside this sole engine observer: selections cancel
+                            // retry work.
+                            resolving = true
+                            recoveryJob = scope.launch {
+                                try {
+                                    resolveRetained()
+                                } catch (_: CancellationException) {
+                                    currentCoroutineContext().ensureActive()
+                                }
+                            }
                         }
                     }
-                }
             }
         }
     }
 
-    suspend fun select(track: Track, entry: QueueEntry, positionMs: Long, playWhenReady: Boolean): AppResult<Unit> {
+    suspend fun select(
+        track: Track,
+        entry: QueueEntry,
+        positionMs: Long,
+        playWhenReady: Boolean,
+    ): AppResult<Unit> {
         require(entry.trackId == track.id) { "Queue entry and track identity differ" }
         invalidate()
         attempt.value++
         recovery.resetForUserAttempt(attemptId())
         resolveOperations = 0
-        state.value = PlaybackSnapshot(PlayerStatus.RESOLVING, entry, track, positionMs.coerceAtLeast(0), null, playWhenReady)
+        state.value =
+            PlaybackSnapshot(
+                PlayerStatus.RESOLVING,
+                entry,
+                track,
+                positionMs.coerceAtLeast(0),
+                null,
+                playWhenReady,
+                attemptId = attempt.value,
+            )
         return resolveRetained()
     }
 
@@ -73,43 +102,74 @@ class PlaybackCoordinator(
             coroutineScope {
                 while (true) {
                     val started = clock()
-                    val pending = async { sourceSelector.select(track, { resolveOperations < 2 }) { resolveOperations++ } }
+                    val pending = async {
+                        sourceSelector.select(track, { resolveOperations < 2 }) {
+                            resolveOperations++
+                        }
+                    }
                     resolution = pending
                     val result = pending.await()
                     ensureActive()
-                    if (selectedGeneration != generation) throw CancellationException("Superseded selection")
+                    if (selectedGeneration != generation)
+                        throw CancellationException("Superseded selection")
                     record("resolve", result.errorOrNull()?.code, elapsed = clock() - started)
-                    val loaded = when (result) {
-                        is AppResult.Failure -> result
-                        is AppResult.Success -> {
-                            val intent = state.value
-                            val position = intent.positionMs.coerceAtLeast(0).let { intent.durationMs?.let(it::coerceAtMost) ?: it }
-                            val loadId = ++nextLoadId
-                            activeLoadId = loadId
-                            val source = when (val selected = result.value) {
-                                is PlayableSource.Local -> selected.copy(loadId = loadId)
-                                is PlayableSource.Remote -> selected.copy(loadId = loadId)
-                            }
-                            activeLocal = (source as? PlayableSource.Local)?.assetId
-                            state.value = state.value.copy(track = source.track, candidateId = when (source) {
-                                is PlayableSource.Local -> source.candidateId
-                                is PlayableSource.Remote -> source.lease.candidateId
-                            })
-                            engine.load(entry, source, position, intent.playWhenReady).also {
-                                record("load", it.errorOrNull()?.code, (source as? PlayableSource.Remote)?.lease?.transport?.name)
+                    val loaded =
+                        when (result) {
+                            is AppResult.Failure -> result
+                            is AppResult.Success -> {
+                                val intent = state.value
+                                val position =
+                                    intent.positionMs.coerceAtLeast(0).let {
+                                        intent.durationMs?.let(it::coerceAtMost) ?: it
+                                    }
+                                val loadId = ++nextLoadId
+                                activeLoadId = loadId
+                                val source =
+                                    when (val selected = result.value) {
+                                        is PlayableSource.Local -> selected.copy(loadId = loadId)
+                                        is PlayableSource.Remote -> selected.copy(loadId = loadId)
+                                    }
+                                activeLocal = (source as? PlayableSource.Local)?.assetId
+                                state.value =
+                                    state.value.copy(
+                                        track = source.track,
+                                        candidateId =
+                                            when (source) {
+                                                is PlayableSource.Local -> source.candidateId
+                                                is PlayableSource.Remote -> source.lease.candidateId
+                                            },
+                                    )
+                                engine.load(entry, source, position, intent.playWhenReady).also {
+                                    record(
+                                        "load",
+                                        it.errorOrNull()?.code,
+                                        (source as? PlayableSource.Remote)?.lease?.transport?.name,
+                                    )
+                                }
                             }
                         }
-                    }
                     ensureActive()
-                    if (selectedGeneration != generation) throw CancellationException("Superseded selection")
+                    if (selectedGeneration != generation)
+                        throw CancellationException("Superseded selection")
                     when (loaded) {
                         is AppResult.Failure -> {
                             activeLocal?.let { sourceSelector.localFailed(it) }
-                            if (activeLocal != null || resolveOperations >= 2 || !recovery.shouldResolveAgain(loaded.error, attemptId())) return@coroutineScope fail(loaded.error)
+                            if (
+                                activeLocal != null ||
+                                    resolveOperations >= 2 ||
+                                    !recovery.shouldResolveAgain(loaded.error, attemptId())
+                            )
+                                return@coroutineScope fail(loaded.error)
                         }
                         is AppResult.Success -> {
                             resolving = false
-                            state.value = engine.snapshot.value.let { it.copy(durationMs = it.durationMs ?: retained.durationMs) }
+                            state.value =
+                                engine.snapshot.value.let {
+                                    it.copy(
+                                        durationMs = it.durationMs ?: retained.durationMs,
+                                        attemptId = attempt.value,
+                                    )
+                                }
                             return@coroutineScope loaded
                         }
                     }
@@ -127,46 +187,97 @@ class PlaybackCoordinator(
         }
     }
 
-    fun play() { if (resolving) state.value = state.value.copy(playWhenReady = true) else engine.play() }
-    fun pause() { if (resolving) state.value = state.value.copy(playWhenReady = false) else engine.pause() }
-    fun seek(positionMs: Long) {
-        val clamped = positionMs.coerceAtLeast(0).let { value -> state.value.durationMs?.let { value.coerceAtMost(it) } ?: value }
-        if (resolving) state.value = state.value.copy(positionMs = clamped) else engine.seek(clamped)
+    fun play() {
+        if (resolving) state.value = state.value.copy(playWhenReady = true) else engine.play()
     }
+
+    fun pause() {
+        if (resolving) state.value = state.value.copy(playWhenReady = false) else engine.pause()
+    }
+
+    fun seek(positionMs: Long) {
+        val clamped =
+            positionMs.coerceAtLeast(0).let { value ->
+                state.value.durationMs?.let { value.coerceAtMost(it) } ?: value
+            }
+        if (resolving) state.value = state.value.copy(positionMs = clamped)
+        else engine.seek(clamped)
+    }
+
     private fun invalidate() {
         ++generation
         activeLoadId = null
         activeLocal = null
-        resolution?.cancel(); resolution = null
-        recoveryJob?.cancel(); recoveryJob = null
+        resolution?.cancel()
+        resolution = null
+        recoveryJob?.cancel()
+        recoveryJob = null
         resolving = false
     }
-    fun stop() { invalidate(); engine.stop(); state.value = PlaybackSnapshot() }
-    /** Stop the old transport while retaining selection, commands and the attempt's recovery budget. */
+
+    fun stop() {
+        invalidate()
+        engine.stop()
+        state.value = PlaybackSnapshot()
+    }
+
+    /**
+     * Stop the old transport while retaining selection, commands and the attempt's recovery budget.
+     */
     fun networkInvalidated() {
         if (activeLocal != null) return
         invalidate()
         val retained = state.value
         resolving = retained.current != null
         engine.stop()
-        state.value = retained.copy(status = if (resolving) PlayerStatus.RESOLVING else PlayerStatus.IDLE, error = null)
+        state.value =
+            retained.copy(
+                status = if (resolving) PlayerStatus.RESOLVING else PlayerStatus.IDLE,
+                error = null,
+            )
     }
+
     suspend fun networkActivated() {
         if (activeLocal != null) return
         if (!network().ready || state.value.current == null) return
         resolveRetained()
     }
-    fun release() { stop(); observation.cancel(); engine.release() }
-    private fun attemptId() = "playback-${attempt.value}"
-    private fun record(stage: String, code: ErrorCode?, transport: String? = null, elapsed: Long = 0) {
-        diagnostics(DiagnosticEvent(attemptId(), stage, providerVersion,
-            state.value.candidateId?.value ?: state.value.track?.candidates?.firstOrNull()?.id?.value,
-            transport, code, elapsed.coerceAtLeast(0)))
+
+    fun release() {
+        stop()
+        observation.cancel()
+        engine.release()
     }
+
+    private fun attemptId() = "playback-${attempt.value}"
+
+    private fun record(
+        stage: String,
+        code: ErrorCode?,
+        transport: String? = null,
+        elapsed: Long = 0,
+    ) {
+        diagnostics(
+            DiagnosticEvent(
+                attemptId(),
+                stage,
+                providerVersion,
+                state.value.candidateId?.value
+                    ?: state.value.track?.candidates?.firstOrNull()?.id?.value,
+                transport,
+                code,
+                elapsed.coerceAtLeast(0),
+            )
+        )
+    }
+
     private fun fail(error: AppError): AppResult.Failure {
         resolving = false
         state.value = state.value.copy(status = PlayerStatus.FAILED, error = error)
         return AppResult.Failure(error)
     }
-    companion object { val CAPABILITIES = PlaybackCapabilities(setOf(TransportKind.PROGRESSIVE, TransportKind.HLS)) }
+
+    companion object {
+        val CAPABILITIES = PlaybackCapabilities(setOf(TransportKind.PROGRESSIVE, TransportKind.HLS))
+    }
 }
