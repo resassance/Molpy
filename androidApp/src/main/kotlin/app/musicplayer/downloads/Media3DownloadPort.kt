@@ -56,7 +56,12 @@ internal class Media3DownloadPort(private val store: DownloadStore) : DownloadPo
             if (asset.id in store.removing) return@command failure(ErrorCode.INVALID_CONFIG, true)
             if (previous?.state == DownloadState.AVAILABLE)
                 return@command AppResult.Success(asset.id)
+            if (previous?.state == DownloadState.FAILED) {
+                store.removeLocked(asset, delete = false, retry = true, restartCount = 0)
+                return@command AppResult.Success(asset.id)
+            }
             store.repository.saveMapping(asset.copy(state = DownloadState.QUEUED))
+            store.rememberLease(asset, lease)
             start(asset)
             store.refresh()
             AppResult.Success(asset.id)
@@ -80,9 +85,13 @@ internal class Media3DownloadPort(private val store: DownloadStore) : DownloadPo
                 store.repository.findAsset(id) ?: return@command failure(ErrorCode.INCOMPLETE_MEDIA)
             if (id in store.removing) return@command failure(ErrorCode.INVALID_CONFIG, true)
             val indexed = store.manager.downloadIndex.getDownload(id.value)
-            if (indexed?.state == Download.STATE_COMPLETED)
+            if (indexed?.state == Download.STATE_COMPLETED && asset.state != DownloadState.FAILED)
                 return@command store.project(indexed, null)
             if (!store.currentNetwork().ready) return@command failure(ErrorCode.NETWORK, true)
+            if (asset.state == DownloadState.FAILED) {
+                store.removeLocked(asset, delete = false, retry = true, restartCount = 0)
+                return@command AppResult.Success(Unit)
+            }
             start(asset)
             store.repository.saveMapping(asset.copy(state = DownloadState.QUEUED))
             store.refresh()

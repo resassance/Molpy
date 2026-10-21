@@ -38,6 +38,12 @@ internal object DownloadAdmission {
                 require(values.size == 1)
                 return values.single().trim()
             }
+            if (status in setOf(403, 410))
+                return AdmissionResult(
+                    null,
+                    true,
+                    AppError(ErrorCode.URL_REJECTED, "download.expired", true),
+                )
             if (offset < 0 || status !in setOf(200, 206)) return denied(false)
             val mime = header("Content-Type")?.substringBefore(';')?.trim()?.lowercase()
             if (
@@ -118,6 +124,20 @@ internal object DownloadAdmission {
 
 /** Shared across every upstream instance/fallback/retry belonging to one owner attempt. */
 internal class DownloadAttempt(val token: String) {
+    private val persistedRestarts =
+        token.substringAfterLast('\n').let {
+            if (!it.startsWith("restart=")) 0
+            else it.removePrefix("restart=").toIntOrNull()?.takeIf { count -> count >= 0 } ?: 1
+        }
+    private var restartClaimed = false
+
+    @Synchronized
+    fun claimAutomaticRestart(): Boolean {
+        if (persistedRestarts != 0 || restartClaimed) return false
+        restartClaimed = true
+        return true
+    }
+
     @Volatile
     var rejection: AppError? = null
         private set
@@ -146,6 +166,20 @@ internal class DownloadRecovery(
                 asset.id.value + "\n" + asset.representation.id + "\n" + UUID.randomUUID()
             )
         }
+
+    fun restart(asset: OfflineAsset, automaticRestarts: Int) {
+        require(automaticRestarts in 0..1)
+        attempts[asset.id] =
+            DownloadAttempt(
+                asset.id.value +
+                    "\n" +
+                    asset.representation.id +
+                    "\n" +
+                    UUID.randomUUID() +
+                    "\nrestart=" +
+                    automaticRestarts
+            )
+    }
 
     fun restore(asset: OfflineAsset, token: String) {
         attempts.putIfAbsent(asset.id, DownloadAttempt(token))

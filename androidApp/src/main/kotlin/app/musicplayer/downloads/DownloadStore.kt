@@ -51,10 +51,14 @@ internal class DownloadStore(
             post(asset.id) { rejectAttempt(asset.id, attempt, restart, error) }
         }
 
-    private data class Removal(val token: String, val delete: Boolean, val retry: Boolean)
+    private data class Removal(
+        val token: String,
+        val delete: Boolean,
+        val retry: Boolean,
+        val restartCount: Int = 1,
+    )
 
     private val removalIntents = mutableMapOf<AssetId, Removal>()
-    private val recoveryUsed = mutableSetOf<AssetId>()
     val manager =
         DownloadManager(
                 this.context,
@@ -145,7 +149,12 @@ internal class DownloadStore(
                         )
                         return@post
                     }
-                    finishRemoval(asset, intent?.delete ?: false, intent?.retry ?: false)
+                    finishRemoval(
+                        asset,
+                        intent?.delete ?: false,
+                        intent?.retry ?: false,
+                        intent?.restartCount ?: 1,
+                    )
                 }
             }
         }
@@ -261,6 +270,7 @@ internal class DownloadStore(
         asset: OfflineAsset,
         delete: Boolean = true,
         retry: Boolean = false,
+        restartCount: Int = 1,
     ) {
         check(manager.downloadIndex.getDownload(asset.id.value) == null)
         leaseCache.invalidate(asset.id)
@@ -272,27 +282,64 @@ internal class DownloadStore(
         if (delete) {
             repository.removeMapping(asset.id)
             clearFailure(asset.id)
-            recoveryUsed -= asset.id
             assetsChanged()
+        } else if (retry) {
+            restartAfterRemoval(asset, restartCount)
         } else {
-            repository.saveMapping(
-                asset.copy(
-                    bytes = 0,
-                    state = if (retry) DownloadState.QUEUED else DownloadState.FAILED,
-                )
-            )
-            if (retry) {
-                // No add while REMOVING. The new request owns a new sticky attempt/CacheWriter.
-                withContext(Dispatchers.Main.immediate) { manager.addDownload(request(asset)) }
-            }
+            repository.saveMapping(asset.copy(bytes = 0, state = DownloadState.FAILED))
         }
         refresh()
+    }
+
+    private suspend fun restartAfterRemoval(asset: OfflineAsset, restartCount: Int) {
+        suspend fun failed(error: AppError) {
+            repository.saveMapping(asset.copy(bytes = 0, state = DownloadState.FAILED))
+            fail(asset.id, error)
+        }
+        val candidate = asset.trackSnapshot.candidates.single { it.id == asset.candidateId }
+        val resolved = resolveCandidate(candidate, currentNetwork())
+        if (resolved is AppResult.Failure) {
+            failed(resolved.error)
+            return
+        }
+        val lease = (resolved as AppResult.Success).value
+        DownloadCommandPolicy.admit(lease, candidate, currentNetwork().generation)?.let {
+            failed(it)
+            return
+        }
+        val fresh =
+            asset.copy(
+                representation = lease.representation,
+                storageKey =
+                    DownloadPolicy()
+                        .keyFor(asset.trackId, asset.candidateId, lease.representation.id),
+                bytes = 0,
+                state = DownloadState.QUEUED,
+            )
+        if (
+            repository.listAssets().any { it.id != asset.id && it.storageKey == fresh.storageKey }
+        ) {
+            failed(AppError(ErrorCode.RESOURCE_CHANGED, "download.restart.identity", false))
+            return
+        }
+        repository.saveMapping(fresh)
+        recovery.restart(fresh, restartCount)
+        rememberLease(fresh, lease)
+        clearFailure(fresh.id)
+        withContext(Dispatchers.Main.immediate) {
+            if (restartCount == 0) {
+                pendingAdds += fresh.id
+                dispatchServiceCommand(DownloadServiceCommand.ADD, request(fresh))
+                userStarted()
+            } else manager.addDownload(request(fresh))
+        }
     }
 
     internal suspend fun removeLocked(
         asset: OfflineAsset,
         delete: Boolean = true,
         retry: Boolean = false,
+        restartCount: Int = 1,
     ) {
         leaseCache.invalidate(asset.id)
         networkPending -= asset.id
@@ -306,14 +353,14 @@ internal class DownloadStore(
         // Index persistence can fail while the manager still owns a writer. Consult its live view
         // too.
         if (indexed == null && active == null && asset.id !in pendingAdds) {
-            finishRemoval(asset, delete, retry)
+            finishRemoval(asset, delete, retry, restartCount)
             return
         }
         removing += asset.id
         val token =
             (indexed ?: active)?.request?.data?.toString(Charsets.UTF_8)
                 ?: recovery.attempt(asset).token
-        removalIntents[asset.id] = Removal(token, delete, retry)
+        removalIntents[asset.id] = Removal(token, delete, retry, restartCount)
         withContext(Dispatchers.Main.immediate) { manager.removeDownload(asset.id.value) }
         // Timeout fails closed. It never deletes or re-adds while a writer might still be active.
         scope.launch(Dispatchers.IO) {
@@ -352,7 +399,7 @@ internal class DownloadStore(
             return
         }
         if (indexed.request.data.toString(Charsets.UTF_8) != attempt.token || id in removing) return
-        val retry = restart && recoveryUsed.add(id)
+        val retry = restart && attempt.claimAutomaticRestart()
         fail(id, error)
         repository.saveMapping(asset.copy(state = DownloadState.FAILED))
         refresh()

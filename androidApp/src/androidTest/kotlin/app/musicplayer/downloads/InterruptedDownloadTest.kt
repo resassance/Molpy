@@ -195,44 +195,31 @@ class InterruptedDownloadTest {
     }
 
     @Test
-    fun changedImmutableRepresentationCleansPartialAndRetainsFailedRecordingSnapshot() =
-        runBlocking {
-            RecoveryServer().use { server ->
-                val fixture = RecoveryFixture.create(server)
-                try {
-                    fixture.start()
-                    fixture.await(DownloadState.FAILED)
-                    fixture.resolvedRepresentation =
-                        fixture.asset.representation.copy(id = "replacement")
-                    fixture.start()
-                    withTimeout(15_000) {
-                        while (
-                            fixture.asset.id in fixture.store.removing ||
-                                fixture.store.manager.downloadIndex.getDownload(
-                                    fixture.asset.id.value
-                                ) != null
-                        ) delay(20)
-                    }
-                    val saved = fixture.repository.findAsset(fixture.asset.id)!!
-                    assertEquals(fixture.asset.trackSnapshot, saved.trackSnapshot)
-                    assertEquals(fixture.asset.representation, saved.representation)
-                    assertEquals(DownloadState.FAILED, saved.state)
-                    assertEquals(
-                        ErrorCode.RESOURCE_CHANGED,
-                        fixture.store.failures.value[fixture.asset.id]?.code,
-                    )
-                    assertEquals(
-                        0L,
-                        fixture.store.cache.getCachedBytes(saved.storageKey, 0, Long.MAX_VALUE),
-                    )
-                    assertFalse(
-                        ResourceStampMetadata.hasOwned(fixture.store.cache, saved.storageKey)
-                    )
-                } finally {
-                    fixture.close()
-                }
+    fun changedFormatRestartsWithoutReusingTheOldCacheKeyOrPrefix() = runBlocking {
+        RecoveryServer().use { server ->
+            val fixture = RecoveryFixture.create(server)
+            try {
+                fixture.start()
+                fixture.await(DownloadState.FAILED)
+                fixture.resolvedRepresentation =
+                    fixture.asset.representation.copy(id = "replacement")
+                fixture.start()
+                fixture.await(DownloadState.AVAILABLE)
+                val saved = fixture.repository.findAsset(fixture.asset.id)!!
+                assertEquals(fixture.asset.trackSnapshot, saved.trackSnapshot)
+                assertEquals("replacement", saved.representation.id)
+                assertNotEquals(fixture.asset.storageKey, saved.storageKey)
+                assertTrue(fixture.store.cache.getCachedSpans(fixture.asset.storageKey).isEmpty())
+                assertArrayEquals(server.audio, fixture.readAll(saved))
+                assertFalse(
+                    DownloadAttempt(fixture.store.request(saved).data.toString(Charsets.UTF_8))
+                        .claimAutomaticRestart()
+                )
+            } finally {
+                fixture.close()
             }
         }
+    }
 
     @Test
     fun cacheCommitStorageFullFailureNeverPublishesAvailableAndPreservesUnrelatedReadyAudio() =
@@ -499,7 +486,7 @@ private constructor(private val server: RecoveryServer, duration: Long) {
             ) delay(20)
         }
 
-    fun readAll(): ByteArray {
+    fun readAll(asset: OfflineAsset = this.asset): ByteArray {
         val source =
             CacheDataSource.Factory()
                 .setCache(store.cache)

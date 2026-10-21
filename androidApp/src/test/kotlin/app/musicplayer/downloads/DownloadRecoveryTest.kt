@@ -26,6 +26,24 @@ class DownloadRecoveryTest {
     ) = DownloadAdmission.evaluate(source, current, previous, offset, status, headers, bytes)
 
     @Test
+    fun automaticRestartBudgetSurvivesRestorationAndExplicitRetryResetsIt() {
+        val first = DownloadAttempt("asset\nformat\nuuid")
+        assertTrue(first.claimAutomaticRestart())
+        assertFalse(first.claimAutomaticRestart())
+        val restored = DownloadAttempt("asset\nformat\nuuid\nrestart=1")
+        assertFalse(restored.claimAutomaticRestart())
+        val explicit = DownloadAttempt("asset\nformat\nnew-uuid")
+        assertTrue(explicit.claimAutomaticRestart())
+    }
+
+    @Test
+    fun expiredResponseGetsOneFreshResolutionInsteadOfCodecError() {
+        val result = admit(0, 403, emptyMap(), null, false)
+        assertEquals(ErrorCode.URL_REJECTED, result.error?.code)
+        assertTrue(result.restart)
+    }
+
+    @Test
     fun explicitNonAudioResponseIsRejectedBeforeReading() {
         for (mime in
             listOf("text/html; charset=utf-8", "application/json", "application/problem+json")) {

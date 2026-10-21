@@ -91,7 +91,7 @@ internal class DownloadDataSource private constructor(private val factory: Facto
                     ) != RepresentationCompatibility.COMPATIBLE
             ) {
                 val error = AppError(ErrorCode.RESOURCE_CHANGED, "download.representation", false)
-                if (attempt != null) factory.recovery?.reject(asset, attempt, false, error)
+                if (attempt != null) factory.recovery?.reject(asset, attempt, true, error)
                 reject(ErrorCode.RESOURCE_CHANGED)
             }
             val runtimeUri = Uri.parse(lease.request.uri)
