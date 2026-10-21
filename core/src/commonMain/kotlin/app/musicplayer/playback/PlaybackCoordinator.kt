@@ -115,7 +115,7 @@ class PlaybackCoordinator(
                             ensureActive()
                             resolveOperations++
                             resolveStarted = clock()
-                            record("metadata", null, elapsed = resolveStarted!! - started)
+                            record("metadata", null, elapsed = clock() - started)
                         }
                     }
                     resolution = pending

@@ -10,6 +10,7 @@ import androidx.compose.ui.*
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.style.TextOverflow
@@ -76,7 +77,8 @@ fun NowPlayingScreen(
                             .verticalScroll(rememberScrollState())
                             .heightIn(min = availableHeight),
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.SpaceEvenly,
+                        verticalArrangement =
+                            Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
                     ) {
                         Box(
                             Modifier.fillMaxWidth().height(cover + 16.dp),
@@ -123,6 +125,7 @@ fun NowPlayingScreen(
                                     Text(
                                         track.title,
                                         style = MaterialTheme.typography.headlineMedium,
+                                        minLines = 2,
                                         maxLines = 2,
                                         overflow = TextOverflow.Ellipsis,
                                     )
@@ -146,75 +149,25 @@ fun NowPlayingScreen(
                                     )
                                 }
                             }
-                            track.album?.let { album ->
-                                Text(
-                                    album.name,
-                                    Modifier.clickable(enabled = album.source != null) {
-                                        onAlbum(album)
-                                    },
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = colors.onSurfaceVariant,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            }
-                            var scrub by
-                                remember(state.snapshot.current?.id) {
-                                    mutableStateOf<Float?>(null)
-                                }
-                            val duration = state.snapshot.durationMs?.takeIf { it > 0 }
-                            val position = scrub ?: state.snapshot.positionMs.toFloat()
-                            Slider(
-                                position.coerceIn(0f, (duration ?: 1).toFloat()),
-                                { scrub = it },
-                                Modifier.fillMaxWidth().semantics {
-                                    contentDescription = "Позиция воспроизведения"
+                            val album = track.album
+                            Text(
+                                album?.name.orEmpty(),
+                                Modifier.clickable(enabled = album?.source != null) {
+                                    album?.let(onAlbum)
                                 },
-                                enabled = duration != null,
-                                valueRange = 0f..(duration ?: 1).toFloat(),
-                                onValueChangeFinished = {
-                                    scrub?.let { model.seek(it.toLong()) }
-                                    scrub = null
-                                },
-                                thumb = {
-                                    Box(
-                                        Modifier.size(12.dp).background(colors.primary, CircleShape)
-                                    )
-                                },
-                                track = { slider ->
-                                    Box(
-                                        Modifier.fillMaxWidth()
-                                            .height(4.dp)
-                                            .background(
-                                                colors.onSurface.copy(alpha = 0.25f),
-                                                CircleShape,
-                                            )
-                                    ) {
-                                        val fraction =
-                                            if (duration == null) 0f
-                                            else
-                                                (slider.value / duration.toFloat()).coerceIn(0f, 1f)
-                                        Box(
-                                            Modifier.fillMaxWidth(fraction)
-                                                .fillMaxHeight()
-                                                .background(colors.primary, CircleShape)
-                                        )
-                                    }
-                                },
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = colors.onSurfaceVariant,
+                                minLines = 1,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                             )
-                            Row(
-                                Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                            ) {
-                                Text(
-                                    formatTrackDuration(position.toLong()),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = colors.onSurfaceVariant,
-                                )
-                                Text(
-                                    formatTrackDuration(duration),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = colors.onSurfaceVariant,
+                            key(state.snapshot.current?.id) {
+                                PlaybackProgress(
+                                    state.snapshot.positionMs,
+                                    state.effectiveDurationMs,
+                                    state.snapshot.bufferedPositionMs,
+                                    model::seek,
+                                    Modifier.fillMaxWidth(),
                                 )
                             }
                             Row(
@@ -252,8 +205,29 @@ fun NowPlayingScreen(
                                     Icon(AppIcons.Next, "Следующий трек", Modifier.size(32.dp))
                                 }
                             }
-                            state.snapshot.error?.let { InlineError(it, model::retry) }
-                            state.commandError?.let { InlineError(it, model::retry) }
+                            Box(
+                                Modifier.fillMaxWidth()
+                                    .height(88.dp * LocalDensity.current.fontScale)
+                                    .verticalScroll(rememberScrollState()),
+                                contentAlignment = Alignment.CenterStart,
+                            ) {
+                                val error = state.snapshot.error ?: state.commandError
+                                when {
+                                    error != null -> InlineError(error, model::retry)
+                                    state.snapshot.status == PlayerStatus.RESOLVING ->
+                                        Text(
+                                            "Подготавливаем трек…",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = colors.onSurfaceVariant,
+                                        )
+                                    state.snapshot.status == PlayerStatus.BUFFERING ->
+                                        Text(
+                                            "Загружаем аудио…",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = colors.onSurfaceVariant,
+                                        )
+                                }
+                            }
                         }
                     }
                 }
