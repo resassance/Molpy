@@ -608,6 +608,7 @@ internal class DownloadRuntime(
     repository: OfflineRepository,
     private val network: AndroidNetworkController,
     onAssetsChanged: () -> Unit = {},
+    private val audioMetadataRecorder: AudioMetadataRecorder? = null,
 ) {
     private var generation = SupervisorJob()
     private var session: ExtractionSession? = null
@@ -643,7 +644,9 @@ internal class DownloadRuntime(
                 )
             }
         try {
-            return task.await()
+            val result = task.await()
+            if (result is AppResult.Success) audioMetadataRecorder?.record(candidate, result.value)
+            return result
         } finally {
             task.cancel()
         }

@@ -26,6 +26,7 @@ class AndroidPlayerEngine(
     localDataSource: androidx.media3.datasource.DataSource.Factory?,
     private val diagnostics: (DiagnosticEvent) -> Unit = {},
     private val clock: () -> Long = SystemClock::elapsedRealtime,
+    private val normalizationEnabled: StateFlow<Boolean> = MutableStateFlow(true),
 ) : PlayerEngine {
     constructor(
         context: Context,
@@ -35,6 +36,7 @@ class AndroidPlayerEngine(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val sources = MediaSourceFactory(callFactoryFor, localDataSource)
     internal val player: ExoPlayer
+    private val volume: VolumeApplication
     private val state = MutableStateFlow(PlaybackSnapshot())
     override val snapshot: StateFlow<PlaybackSnapshot> = state.asStateFlow()
     private var entry: QueueEntry? = null
@@ -93,6 +95,8 @@ class AndroidPlayerEngine(
                 )
                 .setHandleAudioBecomingNoisy(true)
                 .build()
+        volume = VolumeApplication({ player.volume = it }, normalizationEnabled.value)
+        scope.launch { normalizationEnabled.collect(volume::setEnabled) }
         player.addListener(listener)
         player.addAnalyticsListener(audioListener)
         // Media3 has no callbacks for ordinary progress. Sample actual position, never elapsed
@@ -137,6 +141,13 @@ class AndroidPlayerEngine(
                             is PlayableSource.Local -> source.candidateId
                             is PlayableSource.Remote -> source.lease.candidateId
                         }
+                    volume.load(
+                        when (source) {
+                            is PlayableSource.Local -> source.audioMetadata
+                            is PlayableSource.Remote -> source.lease.audioMetadata
+                        },
+                        normalizationEnabled.value,
+                    )
                     startupTiming.start(loadId, clock())
                     player.setMediaSource(built.value, positionMs.coerceAtLeast(0))
                     player.playWhenReady = playWhenReady
@@ -176,6 +187,7 @@ class AndroidPlayerEngine(
         candidateId = null
         startupTiming.clear()
         player.stop()
+        volume.reset()
         player.clearMediaItems()
         state.value = PlaybackSnapshot()
     }

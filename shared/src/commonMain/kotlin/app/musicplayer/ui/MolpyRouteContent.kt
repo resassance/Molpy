@@ -147,7 +147,8 @@ internal fun MolpyRouteContent(
             )
         AppRoute.History -> HistoryScreen(models.profile, artwork, back, onMenu, formatDate)
         AppRoute.Settings ->
-            NetworkSettingsScreen(models.settings, back) { password ->
+            NetworkSettingsScreen(models.settings, back, playback = models.playbackSettings) {
+                password ->
                 scope.launch { models.settings.apply(password) }
             }
     }

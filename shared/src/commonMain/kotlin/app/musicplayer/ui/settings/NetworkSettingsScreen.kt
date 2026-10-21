@@ -117,6 +117,7 @@ private fun NetworkSettingsFields(
 fun NetworkSettingsScreen(
     model: NetworkSettingsModel,
     onBack: () -> Unit,
+    playback: PlaybackSettingsModel? = null,
     onApply: (CharArray?) -> Unit,
 ) {
     val state by model.state.collectAsState()
@@ -126,6 +127,7 @@ fun NetworkSettingsScreen(
             Modifier.weight(1f),
             contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
         ) {
+            playback?.let { item { PlaybackSettingsSection(it) } }
             item {
                 NetworkSettingsFields(
                     state.draft,

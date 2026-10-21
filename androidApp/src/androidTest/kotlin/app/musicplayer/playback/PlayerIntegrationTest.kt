@@ -76,7 +76,16 @@ class PlayerIntegrationTest {
         GeneratedMedia().use { media ->
             val context = InstrumentationRegistry.getInstrumentation().targetContext
             val http = okhttp3.OkHttpClient()
-            val engine = withContext(Dispatchers.Main) { AndroidPlayerEngine(context) { http } }
+            val normalization = kotlinx.coroutines.flow.MutableStateFlow(true)
+            val engine =
+                withContext(Dispatchers.Main) {
+                    AndroidPlayerEngine(
+                        context,
+                        { http },
+                        null,
+                        normalizationEnabled = normalization,
+                    )
+                }
             val ref = SourceRef("test", "generated", "sine")
             val track =
                 Track(
@@ -99,6 +108,7 @@ class PlayerIntegrationTest {
                     MediaRequest(media.uri, emptyMap()),
                     null,
                     0,
+                    AudioMetadata(6.0),
                 )
             try {
                 assertTrue(
@@ -112,6 +122,17 @@ class PlayerIntegrationTest {
                         }
                     }
                 assertTrue(ready.durationMs!! in 9900L..10100L)
+                withContext(Dispatchers.Main) {
+                    assertEquals(0.501187f, engine.player.volume, 0.000001f)
+                }
+                normalization.value = false
+                withContext(Dispatchers.Main) {
+                    withTimeout(5000) { while (engine.player.volume != 1f) delay(10) }
+                }
+                normalization.value = true
+                withContext(Dispatchers.Main) {
+                    withTimeout(5000) { while (engine.player.volume == 1f) delay(10) }
+                }
                 val buffered =
                     withTimeout(5000) { engine.snapshot.first { (it.bufferedPositionMs ?: 0) > 0 } }
                 assertTrue(buffered.bufferedPositionMs!! <= buffered.durationMs!!)

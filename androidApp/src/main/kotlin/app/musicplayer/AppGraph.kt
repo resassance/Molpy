@@ -9,6 +9,7 @@ import app.musicplayer.catalog.*
 import app.musicplayer.diagnostics.DiagnosticEvent
 import app.musicplayer.diagnostics.RedactedDiagnostics
 import app.musicplayer.downloads.*
+import app.musicplayer.library.AudioMetadataRepository
 import app.musicplayer.library.LibraryRepository
 import app.musicplayer.listening.*
 import app.musicplayer.lyrics.*
@@ -17,9 +18,11 @@ import app.musicplayer.network.*
 import app.musicplayer.playback.*
 import app.musicplayer.queue.*
 import app.musicplayer.search.SearchCoordinator
+import app.musicplayer.storage.RoomAudioMetadataRepository
 import app.musicplayer.storage.RoomCollectionsRepository
 import app.musicplayer.storage.RoomLibraryRepository
 import app.musicplayer.storage.RoomListeningRepository
+import app.musicplayer.storage.RoomPlaybackPreferencesRepository
 import app.musicplayer.storage.createMusicDatabase
 import app.musicplayer.ui.MolpyModels
 import app.musicplayer.ui.catalog.CatalogModel
@@ -30,6 +33,7 @@ import app.musicplayer.ui.player.PlayerModel
 import app.musicplayer.ui.profile.ProfileModel
 import app.musicplayer.ui.search.SearchModel
 import app.musicplayer.ui.settings.NetworkSettingsModel
+import app.musicplayer.ui.settings.PlaybackSettingsModel
 import app.musicplayer.ui.theme.PaletteModel
 import com.metrolist.innertubex.InnerTube
 import java.lang.ref.WeakReference
@@ -45,6 +49,13 @@ class AppGraph(private val context: Context) {
     val library by lazy { RoomLibraryRepository(database, System::currentTimeMillis) }
     val collections by lazy { RoomCollectionsRepository(database, System::currentTimeMillis) }
     val listening by lazy { RoomListeningRepository(database, System::currentTimeMillis) }
+    private val audioMetadata by lazy { RoomAudioMetadataRepository(database) }
+    private val playbackPreferences by lazy {
+        RoomPlaybackPreferencesRepository(database, scope, diagnostics::record)
+    }
+    private val audioMetadataRecorder by lazy {
+        AudioMetadataRecorder(audioMetadata, scope, diagnostics::record)
+    }
     private val downloadRuntime by lazy { createDownloadRuntime() }
 
     @androidx.annotation.OptIn(markerClass = [UnstableApi::class])
@@ -54,6 +65,7 @@ class AppGraph(private val context: Context) {
             library,
             network,
             onAssetsChanged = { offlineResources.signal() },
+            audioMetadataRecorder = audioMetadataRecorder,
         )
 
     @get:UnstableApi
@@ -206,12 +218,24 @@ class AppGraph(private val context: Context) {
                 NetworkSettingsModel(network, library, secrets, ownerScope),
                 PaletteModel({ artwork.samplePixels(context, it) }, ownerScope),
                 TrackActions(library, collections, player, downloads),
+                playbackSettings = PlaybackSettingsModel(playbackPreferences, ownerScope),
             )
             .also { models.add(WeakReference(it)) }
 
     @androidx.annotation.OptIn(markerClass = [UnstableApi::class])
     internal fun createPlayback(scope: CoroutineScope): PlaybackRuntime =
-        PlaybackRuntime(context, network, scope, library, diagnostics, downloadStore, listening)
+        PlaybackRuntime(
+            context,
+            network,
+            scope,
+            library,
+            diagnostics,
+            downloadStore,
+            listening,
+            audioMetadata,
+            playbackPreferences,
+            audioMetadataRecorder,
+        )
 }
 
 /**
@@ -226,6 +250,9 @@ internal class PlaybackRuntime(
     diagnostics: RedactedDiagnostics,
     private val downloads: DownloadStore,
     listeningRepository: ListeningRepository,
+    audioMetadata: AudioMetadataRepository? = null,
+    playbackPreferences: PlaybackPreferencesRepository? = null,
+    private val audioMetadataRecorder: AudioMetadataRecorder? = null,
 ) {
     private val local = OfflineMediaSource(downloads.cache)
     val engine =
@@ -234,6 +261,8 @@ internal class PlaybackRuntime(
             network.transport::callFactoryFor,
             local.dataSourceFactory,
             diagnostics::record,
+            normalizationEnabled =
+                playbackPreferences?.normalizationEnabled ?: MutableStateFlow(true),
         )
     private var extractionWarmup: Job? = null
     private var extraction: ExtractionSession? =
@@ -250,9 +279,14 @@ internal class PlaybackRuntime(
                 candidate: PlaybackCandidate,
                 capabilities: PlaybackCapabilities,
                 network: NetworkContext,
-            ): AppResult<ResolvedPlayback> =
-                extraction?.resolver?.resolve(candidate, capabilities, network)
-                    ?: AppResult.Failure(AppError(ErrorCode.NETWORK, "playback.route", true))
+            ): AppResult<ResolvedPlayback> {
+                val result =
+                    extraction?.resolver?.resolve(candidate, capabilities, network)
+                        ?: AppResult.Failure(AppError(ErrorCode.NETWORK, "playback.route", true))
+                if (result is AppResult.Success)
+                    audioMetadataRecorder?.record(candidate, result.value)
+                return result
+            }
         }
     val coordinator =
         PlaybackCoordinator(
@@ -283,6 +317,20 @@ internal class PlaybackRuntime(
                             downloads.refresh()
                         }
                     }
+                },
+                audioMetadata = audioMetadata,
+                metadataFailure = { error ->
+                    diagnostics.record(
+                        app.musicplayer.diagnostics.DiagnosticEvent(
+                            error.operationId,
+                            "storage",
+                            null,
+                            null,
+                            null,
+                            error.code,
+                            0,
+                        )
+                    )
                 },
             ),
         )

@@ -8,6 +8,7 @@ import app.musicplayer.ui.player.PlayerModel
 import app.musicplayer.ui.profile.ProfileModel
 import app.musicplayer.ui.search.SearchModel
 import app.musicplayer.ui.settings.NetworkSettingsModel
+import app.musicplayer.ui.settings.PlaybackSettingsModel
 import app.musicplayer.ui.theme.PaletteModel
 import kotlinx.coroutines.flow.*
 
@@ -21,6 +22,7 @@ class MolpyModels(
     val settings: NetworkSettingsModel,
     val palette: PaletteModel,
     val actions: TrackActions,
+    val playbackSettings: PlaybackSettingsModel? = null,
 ) {
     private val epoch = MutableStateFlow(0L)
     val artworkEpoch: StateFlow<Long> = epoch.asStateFlow()
@@ -46,6 +48,7 @@ class MolpyModels(
         profile.close()
         downloads.close()
         settings.close()
+        playbackSettings?.close()
         palette.close()
     }
 }
