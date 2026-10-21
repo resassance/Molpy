@@ -44,8 +44,10 @@ internal class DownloadStore(
             NoOpCacheEvictor(),
             database,
         )
+    private val leaseCache = DownloadLeaseCache()
     internal val recovery =
         DownloadRecovery(cache) { asset, attempt, restart, error ->
+            leaseCache.invalidate(asset.id)
             post(asset.id) { rejectAttempt(asset.id, attempt, restart, error) }
         }
 
@@ -60,11 +62,7 @@ internal class DownloadStore(
                 cache,
                 DownloadDataSource.Factory(
                     repository,
-                    { asset ->
-                        val candidate =
-                            asset.trackSnapshot.candidates.single { it.id == asset.candidateId }
-                        resolveCandidate(candidate, currentNetwork())
-                    },
+                    { asset -> resolveAssetLease(asset) },
                     callFactoryFor,
                     recovery = recovery,
                 ),
@@ -265,6 +263,7 @@ internal class DownloadStore(
         retry: Boolean = false,
     ) {
         check(manager.downloadIndex.getDownload(asset.id.value) == null)
+        leaseCache.invalidate(asset.id)
         recovery.clean(asset)
         recovery.reset(asset)
         pendingAdds -= asset.id
@@ -295,6 +294,7 @@ internal class DownloadStore(
         delete: Boolean = true,
         retry: Boolean = false,
     ) {
+        leaseCache.invalidate(asset.id)
         networkPending -= asset.id
         repository.saveMapping(asset.copy(state = DownloadState.FAILED))
         refresh()
@@ -454,6 +454,26 @@ internal class DownloadStore(
         else AppResult.Success(Unit)
     }
 
+    internal fun rememberLease(asset: OfflineAsset, lease: ResolvedPlayback) {
+        val attempt = recovery.attempt(asset)
+        if (attempt.rejection != null) return
+        leaseCache.activate(asset.id, attempt.token)
+        leaseCache.remember(asset, attempt.token, lease)
+    }
+
+    private suspend fun resolveAssetLease(asset: OfflineAsset): AppResult<ResolvedPlayback> {
+        val attempt = recovery.attempt(asset)
+        attempt.rejection?.let {
+            return AppResult.Failure(it)
+        }
+        val route = currentNetwork()
+        leaseCache.activate(asset.id, attempt.token)
+        return leaseCache.resolve(asset, attempt.token, route.generation) {
+            val candidate = asset.trackSnapshot.candidates.single { it.id == asset.candidateId }
+            resolveCandidate(candidate, route)
+        }
+    }
+
     internal fun request(asset: OfflineAsset): DownloadRequest =
         DownloadRequest.Builder(asset.id.value, Uri.parse(StableCacheIdentity.uri(asset.id)))
             .setMimeType(asset.representation.mimeType)
@@ -462,7 +482,11 @@ internal class DownloadStore(
             .build()
 
     /** Pause old generation IO; continuation must retain foreground-service ownership. */
-    suspend fun networkInvalidated() = withContext(Dispatchers.Main.immediate) { pauseTransfers() }
+    suspend fun networkInvalidated() =
+        withContext(Dispatchers.Main.immediate) {
+            leaseCache.clear()
+            pauseTransfers()
+        }
 
     private fun pauseTransfers() {
         networkPending +=

@@ -39,6 +39,17 @@ internal object DownloadAdmission {
                 return values.single().trim()
             }
             if (offset < 0 || status !in setOf(200, 206)) return denied(false)
+            val mime = header("Content-Type")?.substringBefore(';')?.trim()?.lowercase()
+            if (
+                mime?.startsWith("text/") == true ||
+                    mime == "application/json" ||
+                    mime?.endsWith("+json") == true
+            )
+                return AdmissionResult(
+                    null,
+                    false,
+                    AppError(ErrorCode.INCOMPLETE_MEDIA, "download.content", true),
+                )
             val encoding = header("Content-Encoding")
             if (encoding != null && !encoding.equals("identity", true)) return denied()
             val validator = header("ETag")?.takeIf(::strong)
