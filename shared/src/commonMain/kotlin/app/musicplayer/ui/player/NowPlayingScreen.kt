@@ -273,7 +273,7 @@ fun NowPlayingScreen(
                                 distance += amount
                             }
                         }
-                        .clickable(onClick = onQueue)
+                        .clickable(interactionSource = null, indication = null, onClick = onQueue)
                         .semantics { contentDescription = "Открыть очередь" },
                     contentAlignment = Alignment.Center,
                 ) {
@@ -281,51 +281,43 @@ fun NowPlayingScreen(
                     Icon(AppIcons.Queue, null, Modifier.size(28.dp).offset(y = 4.dp))
                 }
                 val available = (state.lyrics as? LyricsLookup.Available)?.lyrics
-                if (available != null || state.loadingLyrics || state.lyricsError != null) {
-                    Column(
-                        Modifier.fillMaxWidth()
-                            .padding(horizontal = 24.dp)
-                            .padding(bottom = 12.dp)
-                            .clickable(enabled = available != null, onClick = onLyrics)
-                    ) {
-                        HorizontalDivider(color = colors.outline.copy(alpha = 0.4f))
-                        Text(
-                            "Текст:",
-                            Modifier.padding(top = 8.dp),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = colors.onSurfaceVariant,
-                        )
-                        when {
-                            available != null ->
-                                Text(
-                                    if (available.kind == LyricsKind.LINE_SYNCED)
-                                        LyricsPosition.activeLine(
-                                                available,
-                                                state.snapshot.positionMs,
-                                            )
-                                            ?.let { available.lines[it].text }
-                                            .orEmpty()
-                                    else "Открыть текст",
-                                    Modifier.heightIn(min = 24.dp),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    style = MaterialTheme.typography.bodyLarge,
-                                )
-                            state.loadingLyrics ->
-                                Text(
-                                    "Загружаем текст…",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = colors.onSurfaceVariant,
-                                )
-                            else ->
-                                TextButton(
-                                    model::loadLyrics,
-                                    contentPadding = PaddingValues(0.dp),
-                                ) {
-                                    Text("Загрузить текст ещё раз")
-                                }
+                val lyricsFailed = state.lyricsError != null || state.lyrics is LyricsLookup.Failed
+                Column(
+                    Modifier.fillMaxWidth()
+                        .padding(horizontal = 24.dp)
+                        .padding(bottom = 12.dp)
+                        .clickable(enabled = available != null || lyricsFailed) {
+                            if (available != null) onLyrics() else model.loadLyrics()
                         }
-                    }
+                ) {
+                    HorizontalDivider(color = colors.outline.copy(alpha = 0.4f))
+                    Text(
+                        "Текст:",
+                        Modifier.padding(top = 8.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.onSurfaceVariant,
+                    )
+                    val line =
+                        when {
+                            available?.kind == LyricsKind.LINE_SYNCED ->
+                                LyricsPosition.activeLine(available, state.snapshot.positionMs)
+                                    ?.let { available.lines[it].text }
+                                    .orEmpty()
+                            available != null -> "Открыть текст"
+                            state.loadingLyrics -> "Загружаем текст…"
+                            lyricsFailed -> "Не удалось загрузить. Повторить"
+                            state.lyrics != null -> "Текст недоступен"
+                            else -> ""
+                        }
+                    Text(
+                        line,
+                        Modifier.heightIn(min = 24.dp),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color =
+                            if (available != null) colors.onSurface else colors.onSurfaceVariant,
+                    )
                 }
             }
         }
