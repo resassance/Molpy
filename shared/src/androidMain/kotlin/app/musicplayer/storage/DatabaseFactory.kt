@@ -11,6 +11,6 @@ fun createMusicDatabase(context: Context): MusicDatabase =
             context.applicationContext.getDatabasePath("music.db").absolutePath,
         )
         .setDriver(BundledSQLiteDriver())
-        .addMigrations(Migration1To2, Migration2To3)
+        .addMigrations(Migration1To2, Migration2To3, Migration3To4)
         .setQueryCoroutineContext(Dispatchers.IO)
         .build()
