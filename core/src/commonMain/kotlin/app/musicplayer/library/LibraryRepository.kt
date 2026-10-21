@@ -14,6 +14,13 @@ interface LibraryRepository : IdentityStore, LyricsCache {
 
     suspend fun getTrack(id: TrackId): Track?
 
+    suspend fun fillMissingDuration(id: TrackId, source: SourceRef, durationMs: Long): Track? {
+        val current = getTrack(id) ?: return null
+        val updated = current.withMissingDuration(source, durationMs)
+        if (updated != current) upsert(updated)
+        return updated
+    }
+
     suspend fun setFavorite(id: TrackId, favorite: Boolean)
 
     suspend fun saveQueue(snapshot: QueueSnapshot)

@@ -32,56 +32,98 @@ class SearchCoordinator(
                     .ifEmpty {
                         primary.value.filter { suitable(it, intent) }
                     }
-            if (suitable.isNotEmpty()) return AppResult.Success(SearchResults(suitable))
+            if (suitable.isNotEmpty()) return complete(suitable, null, intent, false, onResults)
         }
         val fallback = catalog.searchVideos(trimmed)
         if (fallback is AppResult.Failure)
             return AppResult.Failure(primary.errorOrNull() ?: fallback.error)
         fallback as AppResult.Success
-        var primaryFailure = primary.errorOrNull()
-        val tracks = fallback.value.distinctBy { it.id }.map(::parseTentative).toMutableList()
+        return complete(
+            fallback.value.distinctBy { it.id }.map(::parseTentative),
+            primary.errorOrNull(),
+            intent,
+            true,
+            onResults,
+        )
+    }
+
+    private suspend fun complete(
+        initial: List<Track>,
+        initialFailure: AppError?,
+        intent: SearchIntent,
+        enrich: Boolean,
+        onResults: (SearchResults) -> Unit,
+    ): AppResult<SearchResults> {
+        val tracks = initial.toMutableList()
+        var primaryFailure = initialFailure
         onResults(SearchResults(tracks.toList(), primaryFailure))
         val updates = Mutex()
         val requests = Semaphore(3)
-        // Enrichment improves visible results; a slow metadata provider must not hold the list
-        // hostage.
+        val matchesByIndex = mutableMapOf<Int, List<Track>>()
+        fun applyMetadata(index: Int) {
+            val latest = tracks[index]
+            val metadata =
+                matcher
+                    .rank(latest, matchesByIndex[index].orEmpty(), intent)
+                    .singleOrNull { it.autoLink }
+                    ?.track ?: return
+            tracks[index] =
+                latest.copy(
+                    title = metadata.title,
+                    artists = metadata.artists,
+                    album = metadata.album ?: latest.album,
+                    artwork = metadata.artwork,
+                    durationMs = latest.durationMs?.takeIf { it > 0 } ?: metadata.durationMs,
+                    provenance = metadata.provenance,
+                )
+        }
         withTimeoutOrNull(3_000) {
-            tracks
-                .toList()
-                .mapIndexed { index, partial ->
-                    async {
-                        requests.withPermit {
-                            val matches = catalog.findMusicMatches(partial)
-                            val metadata =
-                                if (matches is AppResult.Success)
-                                    matcher
-                                        .rank(partial, matches.value, intent)
-                                        .singleOrNull { it.autoLink }
-                                        ?.track
-                                else null
-                            updates.withLock {
-                                ensureActive()
-                                if (
-                                    primaryFailure == null &&
-                                        matches.errorOrNull()?.code == ErrorCode.DATABASE
-                                )
-                                    primaryFailure = matches.errorOrNull()
-                                if (metadata != null)
-                                    tracks[index] =
-                                        partial.copy(
-                                            title = metadata.title,
-                                            artists = metadata.artists,
-                                            album = metadata.album ?: partial.album,
-                                            artwork = metadata.artwork,
-                                            durationMs = metadata.durationMs,
-                                            provenance = metadata.provenance,
-                                        )
-                                onResults(SearchResults(tracks.toList(), primaryFailure))
+            val durationJob = async {
+                val missing =
+                    initial
+                        .filter { it.durationMs == null || it.durationMs <= 0 }
+                        .mapNotNull { it.candidates.firstOrNull()?.source }
+                        .distinct()
+                if (missing.isNotEmpty()) {
+                    val durations = catalog.durations(missing).valueOrNull().orEmpty()
+                    updates.withLock {
+                        ensureActive()
+                        for (index in tracks.indices) {
+                            var track = tracks[index]
+                            durations.forEach { (source, duration) ->
+                                track = track.withMissingDuration(source, duration)
+                            }
+                            tracks[index] = track
+                            applyMetadata(index)
+                        }
+                        onResults(SearchResults(tracks.toList(), primaryFailure))
+                    }
+                }
+            }
+            val matches =
+                if (!enrich) emptyList()
+                else
+                    initial.mapIndexed { index, partial ->
+                        async {
+                            requests.withPermit {
+                                val matches = catalog.findMusicMatches(partial)
+                                updates.withLock {
+                                    ensureActive()
+                                    if (
+                                        primaryFailure == null &&
+                                            matches.errorOrNull()?.code == ErrorCode.DATABASE
+                                    )
+                                        primaryFailure = matches.errorOrNull()
+                                    if (matches is AppResult.Success) {
+                                        matchesByIndex[index] = matches.value
+                                        applyMetadata(index)
+                                    }
+                                    onResults(SearchResults(tracks.toList(), primaryFailure))
+                                }
                             }
                         }
                     }
-                }
-                .awaitAll()
+            (matches + durationJob).awaitAll()
         }
         return AppResult.Success(SearchResults(tracks.toList(), primaryFailure))
     }

@@ -43,6 +43,17 @@ class RoomLibraryRepository(private val database: MusicDatabase, private val now
 
     override suspend fun getTrack(id: TrackId): Track? = read { trackRecords.load(id) }
 
+    override suspend fun fillMissingDuration(
+        id: TrackId,
+        source: SourceRef,
+        durationMs: Long,
+    ): Track? = write {
+        val current = trackRecords.load(id) ?: return@write null
+        val updated = current.withMissingDuration(source, durationMs)
+        if (updated != current) trackRecords.upsert(updated, nowMs())
+        updated
+    }
+
     suspend fun retainedArtworkKeys(): Set<String> = read { dao.retainedArtworkKeys().toSet() }
 
     override suspend fun setFavorite(id: TrackId, favorite: Boolean) {

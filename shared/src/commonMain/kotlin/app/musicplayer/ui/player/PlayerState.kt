@@ -12,6 +12,17 @@ data class PlayerState(
     val commandError: AppError? = null,
     val repositoryError: AppError? = null,
 ) {
+    val effectiveDurationMs: Long?
+        get() =
+            snapshot.durationMs?.takeIf { it > 0 }
+                ?: currentTrack?.let { track ->
+                    val candidate =
+                        if (snapshot.candidateId != null)
+                            track.candidates.firstOrNull { it.id == snapshot.candidateId }
+                        else track.candidates.firstOrNull()
+                    candidate?.durationMs?.takeIf { it > 0 } ?: track.durationMs?.takeIf { it > 0 }
+                }
+
     val currentTrack: Track?
         get() = snapshot.track ?: snapshot.current?.trackId?.let(queueTracks::get)
 }
