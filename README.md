@@ -11,10 +11,10 @@
   <a href="https://developer.android.com/media/media3"><img alt="Media3 1.11.1" src="https://img.shields.io/badge/Media3-1.11.1-00897B?style=for-the-badge&logo=android&logoColor=white"></a>
 </p>
 
-[![Prerelease](https://img.shields.io/badge/release-v0.1.0--alpha.3-D97706?style=flat-square)](https://github.com/resassance/Molpy/releases/tag/v0.1.0-alpha.3)
+[![Prerelease](https://img.shields.io/badge/release-v0.1.0--alpha.4-D97706?style=flat-square)](https://github.com/resassance/Molpy/releases/tag/v0.1.0-alpha.4)
 [![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0--only-546E7A?style=flat-square)](LICENSE)
 
-**[Скачать APK](https://github.com/resassance/Molpy/releases/download/v0.1.0-alpha.3/Molpy-v0.1.0-alpha.3-debug.apk)** · [Страница релиза](https://github.com/resassance/Molpy/releases/tag/v0.1.0-alpha.3) · [Сообщить об ошибке](https://github.com/resassance/Molpy/issues)
+**[Скачать APK](https://github.com/resassance/Molpy/releases/download/v0.1.0-alpha.4/Molpy-v0.1.0-alpha.4-debug.apk)** · [Страница релиза](https://github.com/resassance/Molpy/releases/tag/v0.1.0-alpha.4) · [Сообщить об ошибке](https://github.com/resassance/Molpy/issues)
 
 ## Содержание
 
@@ -65,7 +65,7 @@ Windows и Linux планируются после Android, web — позже. 
 
 **Требования:** Android 6.0 / API 23 или новее, 64-битное устройство `arm64-v8a` либо эмулятор/устройство `x86_64`. 32-битные ABI не включены в APK.
 
-1. Откройте [релиз v0.1.0-alpha.3](https://github.com/resassance/Molpy/releases/tag/v0.1.0-alpha.3) и скачайте `Molpy-v0.1.0-alpha.3-debug.apk`.
+1. Откройте [релиз v0.1.0-alpha.4](https://github.com/resassance/Molpy/releases/tag/v0.1.0-alpha.4) и скачайте `Molpy-v0.1.0-alpha.4-debug.apk`.
 2. Установите APK, разрешив установку из выбранного источника в настройках Android, если система запросит это.
 3. Если YouTube в вашей сети недоступен, включите системный VPN или задайте proxy в настройках сети Molpy.
 4. Найдите запись по исполнителю и названию и выберите её в результатах поиска.
