@@ -37,7 +37,7 @@ fun TrackRow(
 ) {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val compact = maxWidth < 280.dp || LocalDensity.current.fontScale > 1.2f
-        val time = trailingLabel ?: formatTrackDuration(track.durationMs)
+        val time = trailingLabel ?: formatTrackDuration(track.durationMs?.takeIf { it > 0 })
         Row(
             modifier
                 .fillMaxWidth()
