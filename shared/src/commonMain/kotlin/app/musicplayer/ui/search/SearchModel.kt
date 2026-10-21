@@ -35,7 +35,11 @@ class SearchModel(
         mutable.value = mutable.value.copy(loading = true, error = null)
         request = scope.launch {
             try {
-                val result = search.search(query.trim())
+                val result =
+                    search.search(query.trim()) { partial ->
+                        if (selected == generation)
+                            mutable.value = LoadState(partial.tracks, false, partial.primaryFailure)
+                    }
                 ensureActive()
                 if (selected != generation) return@launch
                 mutable.value =

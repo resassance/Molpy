@@ -11,6 +11,47 @@ import kotlinx.coroutines.test.*
 @OptIn(ExperimentalCoroutinesApi::class)
 class SearchModelTest {
     @Test
+    fun fallbackTracksCanPlayWhileOptionalMetadataIsStillLoading() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val original =
+            sampleTrack("Artist - Song [Official Video]")
+                .copy(
+                    provenance = sampleTrack().provenance.copy(tentative = true),
+                    artists = listOf(ArtistRef("Uploader", null)),
+                )
+        val catalog =
+            object : CatalogPort {
+                override suspend fun searchSongs(query: String) =
+                    AppResult.Success(emptyList<Track>())
+
+                override suspend fun searchVideos(query: String) =
+                    AppResult.Success(listOf(original))
+
+                override suspend fun findMusicMatches(track: Track): AppResult<List<Track>> {
+                    gate.await()
+                    return AppResult.Success(emptyList())
+                }
+            }
+        val port = EngineeringPort()
+        val model = SearchModel(SearchCoordinator(catalog), port, backgroundScope)
+        try {
+            model.search("Song")
+            runCurrent()
+            val shown = assertNotNull(model.state.value.data).single()
+            assertEquals("Song", shown.title)
+            assertEquals("Artist", shown.artists.single().name)
+            assertEquals(original.id, shown.id)
+            assertFalse(model.state.value.loading)
+            model.play(0)
+            runCurrent()
+            assertEquals(shown, port.snapshot.value.track)
+        } finally {
+            gate.complete(Unit)
+            model.close()
+        }
+    }
+
+    @Test
     fun latestQueryWinsAndListPlaybackUsesVisibleSnapshot() = runTest {
         val gate = CompletableDeferred<Unit>()
         val a = sampleTrack("A").copy(artists = listOf(ArtistRef("Artist", null)))
