@@ -177,6 +177,7 @@ class InnerTubePlaybackResolver(
                             MediaRequest(extracted.audioUrl, extracted.headers),
                             expiry,
                             network.generation,
+                            AudioMetadata.fromSourceOffset(extracted.loudnessDb),
                         )
                     if (reuseLeases && expiry != null)
                         synchronized(leases) {

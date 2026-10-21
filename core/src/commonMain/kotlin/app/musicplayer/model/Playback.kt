@@ -31,6 +31,7 @@ data class ResolvedPlayback(
     val request: MediaRequest,
     val expiresAtMs: Long?,
     val networkGeneration: Long,
+    val audioMetadata: AudioMetadata? = null,
 )
 
 data class PlaybackCapabilities(val transports: Set<TransportKind>)
@@ -55,6 +56,7 @@ sealed interface PlayableSource {
         override val track: Track,
         val loadId: Long? = null,
         val candidateId: CandidateId? = null,
+        val audioMetadata: AudioMetadata? = null,
     ) : PlayableSource
 }
 

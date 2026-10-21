@@ -24,6 +24,21 @@ import kotlinx.coroutines.withTimeout
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class ResolverMappingTest {
     @Test
+    fun relativeLoudnessIsNormalizedWithoutChangingRepresentationIdentity() = runTest {
+        val loud =
+            resolver(FakeExtractor { stream(loudness = 6.0) })
+                .resolve(candidate, progressive, network)
+                .valueOrNull()!!
+        val unknown =
+            resolver(FakeExtractor { stream(loudness = Double.NaN) })
+                .resolve(candidate, progressive, network)
+                .valueOrNull()!!
+        assertEquals(6.0, loud.audioMetadata?.relativeLoudnessDb)
+        assertNull(unknown.audioMetadata?.relativeLoudnessDb)
+        assertEquals(loud.representation, unknown.representation)
+    }
+
+    @Test
     fun invalidationDuringExtractionCannotRepopulateTheCache() = runTest {
         val gate = CompletableDeferred<Unit>()
         val extractor = FakeExtractor {
@@ -140,12 +155,12 @@ class ResolverMappingTest {
     private var now = 1_000L
     private var generation = 7L
 
-    private fun stream(expiry: Long? = 100_000) =
+    private fun stream(expiry: Long? = 100_000, loudness: Double? = null) =
         ExtractedStream(
             videoId = "video",
             audioUrl = "https://media.invalid/audio?signature=test-secret",
             headers = mapOf("User-Agent" to "test-agent"),
-            loudnessDb = null,
+            loudnessDb = loudness,
             expiresAt = expiry?.let(Instant::fromEpochMilliseconds),
             contentLengthBytes = 1234,
             itag = 140,

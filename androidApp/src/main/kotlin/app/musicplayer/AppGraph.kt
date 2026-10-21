@@ -81,6 +81,10 @@ class AppGraph(private val context: Context) {
     private var activeLyrics: LyricsPort? = null
     private val remoteCatalog =
         object : CatalogPort {
+            override suspend fun durations(sources: List<SourceRef>) = catalogOperation {
+                it.durations(sources)
+            }
+
             override suspend fun searchSongs(query: String) = catalogOperation {
                 it.searchSongs(query)
             }
@@ -175,9 +179,9 @@ class AppGraph(private val context: Context) {
         scope.launch { network.initialize() }
     }
 
-    private suspend fun catalogOperation(
-        action: suspend (CatalogPort) -> AppResult<List<Track>>
-    ): AppResult<List<Track>> {
+    private suspend fun <T> catalogOperation(
+        action: suspend (CatalogPort) -> AppResult<T>
+    ): AppResult<T> {
         val provider = activeCatalog
         if (!network.context.value.ready || provider == null) return unavailable("catalog.route")
         val generation = network.context.value.generation
