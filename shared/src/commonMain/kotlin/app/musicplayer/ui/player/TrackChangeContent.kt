@@ -60,8 +60,9 @@ internal fun TrackArtworkStage(
     direction: TrackMotion,
     artwork: ArtworkLoader,
     cover: Dp,
+    modifier: Modifier = Modifier,
 ) {
-    TrackChangeContent(target, direction, Modifier.fillMaxWidth().height(cover + 16.dp)) { shown, _
+    TrackChangeContent(target, direction, modifier.fillMaxWidth().height(cover + 16.dp)) { shown, _
         ->
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             shown.previousArtwork?.let { previous ->

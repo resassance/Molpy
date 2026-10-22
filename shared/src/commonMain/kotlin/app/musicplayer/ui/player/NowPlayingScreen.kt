@@ -48,7 +48,6 @@ fun NowPlayingScreen(
                 .safeDrawingPadding()
                 .testTag("now-playing")
         ) {
-            val cover = minOf(maxWidth * 0.72f, 320.dp, maxHeight * 0.42f)
             Column(Modifier.fillMaxSize()) {
                 Row(
                     dragHandle.fillMaxWidth().height(56.dp).padding(horizontal = 8.dp),
@@ -79,17 +78,26 @@ fun NowPlayingScreen(
                             queue.previous?.track?.artwork,
                             queue.next?.track?.artwork,
                         )
-                    BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-                        val availableHeight = maxHeight
-                        Column(
-                            Modifier.fillMaxWidth()
-                                .verticalScroll(rememberScrollState())
-                                .heightIn(min = availableHeight),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement =
-                                Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
-                        ) {
-                            TrackArtworkStage(visuals, state.trackMotion, artwork, cover)
+                    PlayerBody(
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                        artwork = {
+                            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                                val cover =
+                                    minOf(
+                                        maxWidth * 0.72f,
+                                        320.dp,
+                                        (maxHeight - 16.dp).coerceAtLeast(0.dp),
+                                    )
+                                TrackArtworkStage(
+                                    visuals,
+                                    state.trackMotion,
+                                    artwork,
+                                    cover,
+                                    dragHandle,
+                                )
+                            }
+                        },
+                        controls = {
                             Column(
                                 Modifier.widthIn(max = 520.dp)
                                     .fillMaxWidth()
@@ -227,8 +235,8 @@ fun NowPlayingScreen(
                                     }
                                 }
                             }
-                        }
-                    }
+                        },
+                    )
                     Box(
                         Modifier.fillMaxWidth()
                             .height(48.dp)
