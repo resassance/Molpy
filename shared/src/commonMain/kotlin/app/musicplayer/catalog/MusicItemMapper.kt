@@ -51,22 +51,6 @@ internal class MusicItemMapper(
                     ?.map { it.requiredObject() }
                     .orEmpty()
             }
-        val artists =
-            relationships
-                .filter { it.objectOrNull("navigationEndpoint")?.browsePageType() == ARTIST_PAGE }
-                .map { run ->
-                    ArtistRef(
-                        run.requiredString("text"),
-                        SourceRef(
-                            PROVIDER,
-                            "artist",
-                            run.requiredObject("navigationEndpoint")
-                                .requiredObject("browseEndpoint")
-                                .requiredString("browseId"),
-                        ),
-                    )
-                }
-                .distinct()
         val albumRun = relationships.firstOrNull {
             it.objectOrNull("navigationEndpoint")?.browsePageType() == ALBUM_PAGE
         }
@@ -132,31 +116,7 @@ internal class MusicItemMapper(
                 thumbnail,
                 null,
             )
-        val resolvedArtists =
-            if (artists.isNotEmpty()) artists
-            else if (context.album != null) {
-                val runs =
-                    rawColumns
-                        .getOrNull(1)
-                        ?.requiredObject()
-                        ?.objectOrNull("musicResponsiveListItemFlexColumnRenderer")
-                        ?.objectOrNull("text")
-                        ?.arrayOrNull("runs")
-                        .orEmpty()
-                val unlinked =
-                    runs
-                        .takeWhile {
-                            it.requiredObject().stringOrNull("text")?.trim() !in setOf("•", "·")
-                        }
-                        .mapNotNull {
-                            it.requiredObject()
-                                .stringOrNull("text")
-                                ?.trim()
-                                ?.takeIf { name -> name.isNotBlank() && durationMs(name) == null }
-                                ?.let { name -> ArtistRef(name, null) }
-                        }
-                unlinked.ifEmpty { context.artists }
-            } else context.artists
+        val resolvedArtists = musicArtistCredits(raw, context)
         val resolvedArtwork =
             context.artwork?.takeIf { context.album != null && it.kind == ArtworkKind.RELEASE }
                 ?: artwork.takeUnless { it.kind == ArtworkKind.PLACEHOLDER }
