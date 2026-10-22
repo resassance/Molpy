@@ -48,15 +48,26 @@ class ArtworkLoader(
         return DisplayKey(data, if (artwork.localKey != null) "local" else "remote:$generation")
     }
 
-    fun displayRequest(artwork: Artwork, generation: Long, retry: Int = 0): ImageRequest {
+    fun displayRequest(
+        artwork: Artwork,
+        generation: Long,
+        retry: Int = 0,
+        sizePx: Int = 0,
+    ): ImageRequest {
         val identity = displayKey(artwork, generation)
         val cachedKey = displayed.value[identity]
         val cachedImage = cachedKey?.let { imageLoader.memoryCache?.get(it)?.image }
         return ImageRequest.Builder(context)
-            .data(identity.data)
+            .data(
+                if (artwork.localKey != null || retry > 0) identity.data
+                else artworkAddress(identity.data, sizePx)
+            )
+            .memoryCacheKeyExtra("molpy.artwork", identity.data)
             .memoryCacheKeyExtra("molpy.route", identity.route)
             .memoryCacheKeyExtra("molpy.retry", retry.toString())
             .apply {
+                // A reused AsyncImage can resolve the previous layout's thumbnail bounds.
+                if (sizePx > 0) size(sizePx)
                 if (cachedImage != null) {
                     placeholderMemoryCacheKey(cachedKey)
                     error(cachedImage)
@@ -68,7 +79,7 @@ class ArtworkLoader(
     fun rememberDisplayResult(artwork: Artwork, generation: Long, result: SuccessResult) {
         val identity = displayKey(artwork, generation)
         if (
-            result.request.data != identity.data ||
+            result.request.memoryCacheKeyExtras["molpy.artwork"] != identity.data ||
                 result.request.memoryCacheKeyExtras["molpy.route"] != identity.route
         )
             return

@@ -9,6 +9,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import app.musicplayer.artwork.ArtworkLoader
 import app.musicplayer.model.*
@@ -23,17 +24,18 @@ fun TrackArtwork(
     modifier: Modifier = Modifier,
     description: String? = null,
 ) {
-    Box(
+    BoxWithConstraints(
         modifier.clip(RoundedCornerShape(6.dp)).background(MaterialTheme.colorScheme.surface),
         contentAlignment = Alignment.Center,
     ) {
         val data = artwork.localKey ?: artwork.remoteUrl
         if (data != null && artwork.kind != ArtworkKind.PLACEHOLDER) {
             val generation = if (artwork.localKey == null) LocalArtworkEpoch.current else 0L
+            val sizePx = with(LocalDensity.current) { maxOf(maxWidth, maxHeight).roundToPx() }
             var retry by remember(data, generation) { mutableStateOf(0) }
             val request =
-                remember(artwork, generation, retry, loader) {
-                    loader.displayRequest(artwork, generation, retry)
+                remember(artwork, generation, retry, loader, sizePx) {
+                    loader.displayRequest(artwork, generation, retry, sizePx)
                 }
             key(generation, retry) {
                 AsyncImage(

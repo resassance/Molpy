@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.*
 import app.musicplayer.artwork.ArtworkLoader
 import app.musicplayer.model.*
 import app.musicplayer.ui.components.*
+import app.musicplayer.ui.present
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -213,13 +214,24 @@ fun NowPlayingScreen(
                                 }
                                 Box(
                                     Modifier.fillMaxWidth()
-                                        .height(88.dp * LocalDensity.current.fontScale)
-                                        .verticalScroll(rememberScrollState()),
+                                        .height(48.dp * LocalDensity.current.fontScale),
                                     contentAlignment = Alignment.CenterStart,
                                 ) {
                                     val error = state.snapshot.error ?: state.commandError
                                     when {
-                                        error != null -> InlineError(error, model::retry)
+                                        error != null ->
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text(
+                                                    present(error).message,
+                                                    Modifier.weight(1f),
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = colors.onSurfaceVariant,
+                                                    maxLines = 2,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                )
+                                                if (error.retryable)
+                                                    TextButton(model::retry) { Text("Повторить") }
+                                            }
                                         state.snapshot.status == PlayerStatus.RESOLVING ->
                                             Text(
                                                 "Подготавливаем трек…",
@@ -271,7 +283,7 @@ fun NowPlayingScreen(
                         Modifier.fillMaxWidth()
                             .padding(horizontal = 24.dp)
                             .padding(bottom = 12.dp)
-                            .clickable(enabled = available != null || lyricsFailed) {
+                            .clickable(enabled = !state.loadingLyrics) {
                                 if (available != null) onLyrics() else model.loadLyrics()
                             }
                     ) {
@@ -287,12 +299,12 @@ fun NowPlayingScreen(
                                 available?.kind == LyricsKind.LINE_SYNCED ->
                                     LyricsPosition.activeLine(available, state.snapshot.positionMs)
                                         ?.let { available.lines[it].text }
-                                        .orEmpty()
+                                        ?.takeIf { it.isNotBlank() } ?: "Открыть текст"
                                 available != null -> "Открыть текст"
                                 state.loadingLyrics -> "Загружаем текст…"
                                 lyricsFailed -> "Не удалось загрузить. Повторить"
                                 state.lyrics != null -> "Текст недоступен"
-                                else -> ""
+                                else -> "Загрузить текст"
                             }
                         Text(
                             line,
