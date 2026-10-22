@@ -100,6 +100,31 @@ object AppIcons {
     }
     val Stop: ImageVector by lazy { vector("Stop", "M16 8v8H8V8h8m2-2H6v12h12V6z") }
 
+    val QueueAdd: ImageVector by lazy {
+        vector(
+            "QueueAdd",
+            "M15,6H3v2h12V6z M15,10H3v2h12V10z M3,16h8v-2H3V16z M17,6v8.18C16.69,14.07,16.35,14,16,14c-1.66,0-3,1.34-3,3s1.34,3,3,3 s3-1.34,3-3V8h3V6H17z",
+        )
+    }
+    val PlaylistAdd: ImageVector by lazy {
+        vector(
+            "PlaylistAdd",
+            "M14,10H3v2h11V10z M14,6H3v2h11V6z M18,14v-4h-2v4h-4v2h4v4h2v-4h4v-2H18z M3,16h7v-2H3V16z",
+        )
+    }
+    val Edit: ImageVector by lazy {
+        vector(
+            "Edit",
+            "M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z",
+        )
+    }
+    val Storage: ImageVector by lazy {
+        vector(
+            "Storage",
+            "M2 20h20v-4H2v4zm2-3h2v2H4v-2zM2 4v4h20V4H2zm4 3H4V5h2v2zm-4 7h20v-4H2v4zm2-3h2v2H4v-2z",
+        )
+    }
+
     private fun vector(name: String, data: String) =
         ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f)
             .addPath(PathParser().parsePathString(data).toNodes(), fill = SolidColor(Color.Black))

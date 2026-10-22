@@ -44,7 +44,7 @@ fun CatalogScreen(
         LazyColumn(
             Modifier.weight(1f),
             state = rememberLazyListState(),
-            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
         ) {
             item {
                 Column(

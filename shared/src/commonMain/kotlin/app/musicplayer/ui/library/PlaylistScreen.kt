@@ -36,15 +36,17 @@ fun PlaylistScreen(
                 }
                 DropdownMenu(menu, { menu = false }) {
                     DropdownMenuItem(
-                        { Text("Переименовать") },
-                        {
+                        leadingIcon = { Icon(AppIcons.Edit, null, Modifier.size(24.dp)) },
+                        text = { Text("Переименовать") },
+                        onClick = {
                             menu = false
                             detail?.let(onRename)
                         },
                     )
                     DropdownMenuItem(
-                        { Text("Удалить плейлист") },
-                        {
+                        leadingIcon = { Icon(AppIcons.Trash, null, Modifier.size(24.dp)) },
+                        text = { Text("Удалить плейлист") },
+                        onClick = {
                             menu = false
                             onDelete(id)
                         },
@@ -55,7 +57,7 @@ fun PlaylistScreen(
         LazyColumn(
             Modifier.weight(1f),
             state = rememberLazyListState(),
-            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         ) {
             if (detail != null) {
                 item {
@@ -114,15 +116,21 @@ fun PlaylistScreen(
                                 }
                                 DropdownMenu(actions, { actions = false }) {
                                     DropdownMenuItem(
-                                        { Text("Действия с треком") },
-                                        {
+                                        leadingIcon = {
+                                            Icon(AppIcons.More, null, Modifier.size(24.dp))
+                                        },
+                                        text = { Text("Действия с треком") },
+                                        onClick = {
                                             actions = false
                                             onMenu(item.track)
                                         },
                                     )
                                     DropdownMenuItem(
-                                        { Text("Убрать из плейлиста") },
-                                        {
+                                        leadingIcon = {
+                                            Icon(AppIcons.Trash, null, Modifier.size(24.dp))
+                                        },
+                                        text = { Text("Убрать из плейлиста") },
+                                        onClick = {
                                             actions = false
                                             scope.launch { model.remove(id, item.id) }
                                         },

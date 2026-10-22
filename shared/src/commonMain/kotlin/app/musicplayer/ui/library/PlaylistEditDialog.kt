@@ -5,6 +5,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.text.input.ImeAction
+import app.musicplayer.ui.components.*
 
 @Composable
 fun PlaylistEditDialog(
@@ -16,9 +17,10 @@ fun PlaylistEditDialog(
 ) {
     var name by remember { mutableStateOf(initial) }
     val valid = name.trim().length in 1..120
-    AlertDialog(
+    MolpyDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (renaming) "Название плейлиста" else "Новый плейлист") },
+        title = if (renaming) "Название плейлиста" else "Новый плейлист",
+        icon = if (renaming) AppIcons.Edit else AppIcons.PlaylistAdd,
         text = {
             OutlinedTextField(
                 name,

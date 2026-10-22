@@ -1,6 +1,8 @@
 package app.musicplayer.ui.components
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -23,11 +25,14 @@ fun TrackMenu(
 ) {
     ModalBottomSheet(
         onDismissRequest = onClose,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = MaterialTheme.colorScheme.surface,
     ) {
         Column(
             Modifier.fillMaxWidth()
-                .padding(horizontal = 24.dp)
+                .heightIn(max = 640.dp)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp)
                 .padding(bottom = 24.dp)
                 .navigationBarsPadding()
         ) {
@@ -36,21 +41,17 @@ fun TrackMenu(
                 track.artists.joinToString { it.name },
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            TextButton(onFavorite, Modifier.fillMaxWidth()) {
-                Icon(if (favorite) AppIcons.HeartFilled else AppIcons.Heart, null)
-                Spacer(Modifier.width(12.dp))
-                Text(if (favorite) "Убрать из избранного" else "В избранное")
-            }
-            TextButton(onEnqueue, Modifier.fillMaxWidth()) { Text("Добавить в очередь") }
-            TextButton(onPlaylist, Modifier.fillMaxWidth()) { Text("Добавить в плейлист") }
-            if (hasDownload)
-                TextButton(onDownloads, Modifier.fillMaxWidth()) { Text("Открыть загрузки") }
+            Spacer(Modifier.height(12.dp))
+            MenuAction(
+                if (favorite) "Убрать из избранного" else "В избранное",
+                if (favorite) AppIcons.HeartFilled else AppIcons.Heart,
+                onFavorite,
+            )
+            MenuAction("Добавить в очередь", AppIcons.QueueAdd, onEnqueue)
+            MenuAction("Добавить в плейлист", AppIcons.PlaylistAdd, onPlaylist)
+            if (hasDownload) MenuAction("Открыть загрузки", AppIcons.Download, onDownloads)
             else {
-                TextButton(onDownload, Modifier.fillMaxWidth(), enabled = canDownload) {
-                    Icon(AppIcons.Download, null)
-                    Spacer(Modifier.width(12.dp))
-                    Text("Скачать на устройство")
-                }
+                MenuAction("Скачать на устройство", AppIcons.Download, onDownload, canDownload)
                 if (!canDownload)
                     Text(
                         "Сначала воспроизведите трек",

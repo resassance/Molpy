@@ -24,7 +24,7 @@ fun HistoryScreen(
         LazyColumn(
             Modifier.weight(1f),
             state = rememberLazyListState(),
-            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         ) {
             itemsIndexed(state.data?.items.orEmpty(), key = { _, item -> item.id }) { index, item ->
                 Column {

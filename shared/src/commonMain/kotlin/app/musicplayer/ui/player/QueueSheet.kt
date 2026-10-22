@@ -35,7 +35,7 @@ fun QueueSheet(
         Column(
             Modifier.fillMaxWidth()
                 .heightIn(max = 640.dp)
-                .padding(horizontal = 24.dp)
+                .padding(horizontal = 16.dp)
                 .navigationBarsPadding()
         ) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

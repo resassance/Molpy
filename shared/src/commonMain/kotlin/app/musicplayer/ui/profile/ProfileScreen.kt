@@ -30,7 +30,7 @@ fun ProfileScreen(
     LazyColumn(
         Modifier.fillMaxSize(),
         state = rememberLazyListState(),
-        contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
     ) {
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {

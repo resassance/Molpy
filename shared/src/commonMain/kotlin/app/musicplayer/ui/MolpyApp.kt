@@ -295,9 +295,10 @@ fun MolpyApp(
                                 )
                             }
                     is AppOverlay.ConfirmDeletePlaylist ->
-                        AlertDialog(
+                        MolpyDialog(
                             onDismissRequest = { finish(overlay) },
-                            title = { Text("Удалить плейлист?") },
+                            title = "Удалить плейлист?",
+                            icon = AppIcons.Trash,
                             text = { Text("Треки останутся в избранном и на устройстве.") },
                             confirmButton = {
                                 TextButton({

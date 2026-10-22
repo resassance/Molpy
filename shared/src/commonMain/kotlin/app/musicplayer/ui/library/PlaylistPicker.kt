@@ -27,14 +27,11 @@ fun PlaylistPicker(
         Column(
             Modifier.fillMaxWidth()
                 .heightIn(max = 640.dp)
-                .padding(horizontal = 24.dp)
+                .padding(horizontal = 16.dp)
                 .navigationBarsPadding()
         ) {
             Text("Добавить в плейлист", style = MaterialTheme.typography.titleLarge)
-            TextButton(onCreate) {
-                Icon(AppIcons.Plus, null)
-                Text("Новый плейлист")
-            }
+            MenuAction("Новый плейлист", AppIcons.Plus, onCreate)
             LazyColumn(
                 Modifier.weight(1f, fill = false),
                 contentPadding = PaddingValues(bottom = 24.dp),

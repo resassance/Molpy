@@ -32,7 +32,7 @@ fun DownloadsScreen(
         LazyColumn(
             Modifier.weight(1f),
             state = rememberLazyListState(),
-            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         ) {
             item {
                 Text(
@@ -92,10 +92,11 @@ fun DownloadsScreen(
         }
     }
     if (info)
-        AlertDialog(
+        MolpyDialog(
             onDismissRequest = { info = false },
             confirmButton = { TextButton({ info = false }) { Text("Понятно") } },
-            title = { Text("Музыка на устройстве") },
+            title = "Музыка на устройстве",
+            icon = AppIcons.Storage,
             text = {
                 Text(
                     "Треки хранятся в данных приложения. При удалении Molpy или очистке его данных скачанная музыка удалится."
@@ -177,16 +178,18 @@ private fun DownloadRow(
                             asset.state == DownloadState.FAILED
                     )
                         DropdownMenuItem(
-                            { Text("Удалить с устройства") },
-                            {
+                            leadingIcon = { Icon(AppIcons.Trash, null, Modifier.size(24.dp)) },
+                            text = { Text("Удалить с устройства") },
+                            onClick = {
                                 menu = false
                                 onRemove()
                             },
                         )
                     else
                         DropdownMenuItem(
-                            { Text("Отменить загрузку") },
-                            {
+                            leadingIcon = { Icon(AppIcons.Close, null, Modifier.size(24.dp)) },
+                            text = { Text("Отменить загрузку") },
+                            onClick = {
                                 menu = false
                                 onCancel()
                             },

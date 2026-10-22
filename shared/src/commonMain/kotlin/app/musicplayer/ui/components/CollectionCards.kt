@@ -41,7 +41,7 @@ fun ScreenHeader(
 ) {
     Row(
         Modifier.fillMaxWidth()
-            .padding(horizontal = if (onBack == null) 24.dp else 8.dp, vertical = 16.dp),
+            .padding(horizontal = if (onBack == null) 16.dp else 8.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         onBack?.let { IconButton(it) { Icon(AppIcons.Back, "Назад") } }

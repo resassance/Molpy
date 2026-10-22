@@ -37,7 +37,7 @@ fun SearchScreen(
         if (model.query.value.isEmpty() && submitted.isNotBlank()) model.search(submitted)
     }
     Column(Modifier.fillMaxSize()) {
-        Column(Modifier.padding(horizontal = 24.dp, vertical = 16.dp)) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 16.dp)) {
             Text("Поиск", style = MaterialTheme.typography.headlineLarge)
             Spacer(Modifier.height(18.dp))
             OutlinedTextField(
@@ -65,7 +65,7 @@ fun SearchScreen(
         LazyColumn(
             Modifier.weight(1f),
             state = rememberLazyListState(),
-            contentPadding = PaddingValues(start = 24.dp, end = 24.dp, bottom = 16.dp),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp),
         ) {
             if (state.loading)
                 item { LinearProgressIndicator(Modifier.fillMaxWidth().padding(vertical = 8.dp)) }
