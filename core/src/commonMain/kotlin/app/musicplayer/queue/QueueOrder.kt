@@ -38,7 +38,12 @@ object QueueOrder {
         return q.entries.firstOrNull { it.id == id }
     }
 
-    fun next(snapshot: QueueSnapshot): QueueEntry? = upcoming(snapshot).firstOrNull()
+    fun hasDeferredContinuation(snapshot: QueueSnapshot): Boolean = snapshot.source?.hasMore == true
+
+    fun next(snapshot: QueueSnapshot): QueueEntry? =
+        upcoming(snapshot).firstOrNull()?.takeUnless {
+            hasDeferredContinuation(snapshot) && it.id in snapshot.source!!.deferredEndIds
+        }
 
     fun upcoming(snapshot: QueueSnapshot): List<QueueEntry> {
         val q = normalized(snapshot)

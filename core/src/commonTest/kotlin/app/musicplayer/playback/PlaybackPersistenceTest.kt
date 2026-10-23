@@ -124,14 +124,20 @@ class PlaybackPersistenceTest {
         init.join()
         runCurrent()
         assertEquals(
-            app.musicplayer.queue.QueueOrder.normalized(saved.copy(playWhenReady = false)),
+            app.musicplayer.queue.QueueOrder.normalized(
+                saved.copy(playWhenReady = false, revision = 1)
+            ),
             h.queue.state.value,
         )
         assertEquals(track, h.queue.snapshot.value.track)
         assertEquals(PlayerStatus.PAUSED, h.queue.snapshot.value.status)
         assertEquals(0, h.calls)
         assertEquals(
-            listOf(app.musicplayer.queue.QueueOrder.normalized(saved.copy(playWhenReady = false))),
+            listOf(
+                app.musicplayer.queue.QueueOrder.normalized(
+                    saved.copy(playWhenReady = false, revision = 1)
+                )
+            ),
             h.repository.saves,
         )
         assertEquals(1, h.repository.prunes)

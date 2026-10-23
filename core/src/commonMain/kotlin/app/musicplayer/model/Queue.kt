@@ -16,4 +16,6 @@ data class QueueSnapshot(
     val playWhenReady: Boolean = false,
     val shuffleEnabled: Boolean = false,
     val traversal: QueueTraversal? = null,
+    val source: QueueSourceState? = null,
+    val revision: Long = 0,
 )

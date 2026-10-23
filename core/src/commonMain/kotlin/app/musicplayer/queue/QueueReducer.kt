@@ -6,8 +6,24 @@ import kotlin.random.Random
 sealed interface QueueCommand {
     data class MoveUpcoming(val id: QueueEntryId, val toIndex: Int) : QueueCommand
 
-    data class Replace(val entries: List<QueueEntry>, val currentEntryId: QueueEntryId) :
-        QueueCommand
+    data class Replace(
+        val entries: List<QueueEntry>,
+        val currentEntryId: QueueEntryId,
+        val source: QueueSourceState? = null,
+    ) : QueueCommand
+
+    data class AppendSourcePage(
+        val sessionId: String,
+        val fromOrdinal: Int,
+        val rows: List<PlaylistQueueRow>,
+        val complete: Boolean,
+    ) : QueueCommand
+
+    data class SourceFailed(
+        val sessionId: String,
+        val error: AppError,
+        val changed: Boolean = false,
+    ) : QueueCommand
 
     data class Add(
         val entries: List<QueueEntry>,
@@ -33,10 +49,21 @@ data class QueueTransition(
     val snapshot: QueueSnapshot,
     val seekToMs: Long? = null,
     val stopPlayback: Boolean = false,
+    val waitForSource: Boolean = false,
 )
 
 object QueueReducer {
     fun reduce(
+        snapshot: QueueSnapshot,
+        command: QueueCommand,
+        random: Random = Random.Default,
+    ): QueueTransition {
+        val q = QueueOrder.normalized(snapshot)
+        return QueueSourceReducer.reduce(q, command, random)
+            ?: reduceKnown(snapshot, command, random)
+    }
+
+    internal fun reduceKnown(
         snapshot: QueueSnapshot,
         command: QueueCommand,
         random: Random = Random.Default,
@@ -87,6 +114,8 @@ object QueueReducer {
             )
         }
         return when (command) {
+            is QueueCommand.AppendSourcePage,
+            is QueueCommand.SourceFailed -> QueueTransition(q)
             is QueueCommand.SetShuffle -> shuffle(command.enabled)
             QueueCommand.ToggleShuffle -> shuffle(!q.shuffleEnabled)
             is QueueCommand.Replace -> {

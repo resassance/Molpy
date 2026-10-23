@@ -34,6 +34,13 @@ class QueueController(
     private var selection: Deferred<AppResult<Unit>>? = null
 
     private var restoredPosition = false
+    private var revision = 0L
+
+    private fun publish(next: QueueSnapshot, force: Boolean = false) {
+        if (!force && next == mutableState.value) return
+        revision = maxOf(revision, mutableState.value.revision, next.revision) + 1
+        mutableState.value = next.copy(revision = revision)
+    }
 
     /**
      * Install durable metadata while paused. No resolver or engine load runs before explicit Play.
@@ -46,7 +53,7 @@ class QueueController(
             entries.firstOrNull { it.id == snapshot.currentEntryId } ?: entries.firstOrNull()
         val position =
             if (current?.id == snapshot.currentEntryId) snapshot.positionMs.coerceAtLeast(0) else 0
-        mutableState.value =
+        publish(
             QueueOrder.normalized(
                 snapshot.copy(
                     entries = entries,
@@ -54,7 +61,9 @@ class QueueController(
                     positionMs = position,
                     playWhenReady = false,
                 )
-            )
+            ),
+            force = true,
+        )
         val track = current?.let { lookup(it.trackId) }
         mutableSnapshot.value =
             if (current == null) PlaybackSnapshot()
@@ -76,10 +85,11 @@ class QueueController(
     suspend fun replace(
         entries: List<QueueEntry>,
         currentEntryId: QueueEntryId,
+        source: QueueSourceState? = null,
         isCurrent: () -> Boolean = { true },
     ): AppResult<Unit> =
         try {
-            transition(QueueCommand.Replace(entries, currentEntryId), isCurrent = isCurrent)
+            transition(QueueCommand.Replace(entries, currentEntryId, source), isCurrent = isCurrent)
         } catch (_: IllegalArgumentException) {
             AppResult.Failure(AppError(ErrorCode.INVALID_CONFIG, "queue.replace", false))
         }
@@ -125,8 +135,24 @@ class QueueController(
                         positionMs = positionMs.coerceAtLeast(0),
                         playWhenReady = playWhenReady,
                     )
-            mutableState.value = after
+            publish(after)
             when {
+                reduced.waitForSource -> {
+                    cancelSelection()
+                    if (after.currentEntryId == null) coordinator.stop() else coordinator.pause()
+                    mutableSnapshot.value =
+                        mutableSnapshot.value.copy(
+                            current = after.entries.firstOrNull { it.id == after.currentEntryId },
+                            track =
+                                if (after.currentEntryId == null) null
+                                else mutableSnapshot.value.track,
+                            status =
+                                if (after.playWhenReady) PlayerStatus.BUFFERING
+                                else PlayerStatus.PAUSED,
+                            playWhenReady = after.playWhenReady,
+                        )
+                    null
+                }
                 command is QueueCommand.Add &&
                     before.currentEntryId == null &&
                     after.currentEntryId != null -> {
@@ -264,15 +290,27 @@ class QueueController(
 
     private fun applyPlayback(actual: PlaybackSnapshot) {
         if (actual.current == null || actual.current.id != mutableState.value.currentEntryId) return
-        mutableSnapshot.value = actual
-        mutableState.value =
-            mutableState.value.copy(
-                positionMs = actual.positionMs,
-                playWhenReady = actual.playWhenReady,
-            )
+        val q = mutableState.value
+        if (q.source?.waiting == true) {
+            mutableSnapshot.value =
+                mutableSnapshot.value.copy(
+                    status = if (q.playWhenReady) PlayerStatus.BUFFERING else PlayerStatus.PAUSED,
+                    playWhenReady = q.playWhenReady,
+                )
+            return
+        }
+        val intent =
+            if (q.source?.hasMore == true && actual.status == PlayerStatus.ENDED) q.playWhenReady
+            else actual.playWhenReady
+        mutableSnapshot.value = actual.copy(playWhenReady = intent)
+        publish(q.copy(positionMs = actual.positionMs, playWhenReady = intent))
     }
 
     suspend fun play() {
+        if (mutableState.value.source?.waiting == true) {
+            transition(QueueCommand.Next, playWhenReady = true)
+            return
+        }
         val restart = mutex.withLock {
             val current = mutableState.value.currentEntryId ?: return@withLock null
             if (
@@ -282,7 +320,7 @@ class QueueController(
                 return@withLock mutableState.value.entries.first { it.id == current }
             }
             coordinator.play()
-            mutableState.value = mutableState.value.copy(playWhenReady = true)
+            publish(mutableState.value.copy(playWhenReady = true))
             mutableSnapshot.value = mutableSnapshot.value.copy(playWhenReady = true)
             null
         }
@@ -295,7 +333,7 @@ class QueueController(
 
     suspend fun pause() = mutex.withLock {
         coordinator.pause()
-        mutableState.value = mutableState.value.copy(playWhenReady = false)
+        publish(mutableState.value.copy(playWhenReady = false))
         mutableSnapshot.value = mutableSnapshot.value.copy(playWhenReady = false)
     }
 
@@ -306,20 +344,20 @@ class QueueController(
                 mutableSnapshot.value.durationMs?.let(value::coerceAtMost) ?: value
             }
         coordinator.seek(clamped)
-        mutableState.value = mutableState.value.copy(positionMs = clamped)
+        publish(mutableState.value.copy(positionMs = clamped))
         mutableSnapshot.value = mutableSnapshot.value.copy(positionMs = clamped)
     }
 
     /** The explicit stop checkpoint is serialized before state clearing and later user commands. */
     suspend fun stop(checkpoint: suspend (QueueSnapshot) -> Unit = {}) = mutex.withLock {
         coordinator.pause()
-        mutableState.value = mutableState.value.copy(playWhenReady = false)
+        publish(mutableState.value.copy(playWhenReady = false))
         mutableSnapshot.value = mutableSnapshot.value.copy(playWhenReady = false)
         checkpoint(mutableState.value)
         restoredPosition = false
         cancelSelection()
         coordinator.stop()
-        mutableState.value = mutableState.value.copy(playWhenReady = false)
+        publish(mutableState.value.copy(playWhenReady = false))
         mutableSnapshot.value = PlaybackSnapshot()
     }
 
