@@ -30,9 +30,13 @@ internal open class EngineeringPort : QueuePlaybackPort {
     val selections = mutableListOf<QueueEntry>()
     var plays = 0
 
-    override suspend fun enqueue(track: Track): AppResult<Unit> {
+    override suspend fun enqueue(
+        track: Track,
+        position: app.musicplayer.queue.QueueInsertion,
+    ): AppResult<Unit> {
         val entry = QueueEntry(QueueEntryId(kotlin.uuid.Uuid.random().toString()), track.id)
-        queue.value = QueueReducer.reduce(queue.value, QueueCommand.Add(listOf(entry))).snapshot
+        queue.value =
+            QueueReducer.reduce(queue.value, QueueCommand.Add(listOf(entry), position)).snapshot
         return AppResult.Success(Unit)
     }
 

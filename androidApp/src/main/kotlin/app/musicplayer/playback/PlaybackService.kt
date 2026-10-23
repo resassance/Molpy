@@ -36,11 +36,14 @@ class PlaybackService : MediaSessionService() {
                 override val snapshot = runtime.persistence.snapshot
                 override val queue = controller.state
 
-                override suspend fun enqueue(track: Track): AppResult<Unit> =
+                override suspend fun enqueue(
+                    track: Track,
+                    position: app.musicplayer.queue.QueueInsertion,
+                ): AppResult<Unit> =
                     scope
                         .async {
                             runtime.startup.await()
-                            commands.enqueue(track)
+                            commands.enqueue(track, position)
                         }
                         .await()
 
@@ -102,7 +105,7 @@ class PlaybackService : MediaSessionService() {
                 }
 
                 override fun stop() {
-                    commands.invalidatePending()
+                    commands.invalidateQueue()
                     scope.launch {
                         runtime.startup.await()
                         runtime.persistence.stop()

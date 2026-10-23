@@ -33,10 +33,14 @@ class PlayerConnection(private val application: MusicApplication) :
     override val queue: StateFlow<QueueSnapshot> = queueState.asStateFlow()
     private var closed = false
     private var commandGeneration = 0L
+    private val insertions = QueueInsertionGate()
+    private var previousHost: QueuePlaybackPort? = null
 
     init {
         scope.launch {
             graph.playback.collectLatest { host ->
+                if (previousHost != null && previousHost !== host) insertions.invalidate()
+                previousHost = host
                 if (host == null) {
                     state.value = PlaybackSnapshot()
                     queueState.value = QueueSnapshot()
@@ -94,11 +98,32 @@ class PlayerConnection(private val application: MusicApplication) :
         playWhenReady: Boolean,
     ) = withHost { it.select(track, entry, positionMs, playWhenReady) }
 
-    override suspend fun playList(tracks: List<Track>, startIndex: Int) = withHost {
-        it.playList(tracks, startIndex)
+    override suspend fun playList(tracks: List<Track>, startIndex: Int): AppResult<Unit> {
+        withContext(Dispatchers.Main.immediate) { insertions.invalidate() }
+        return withHost { it.playList(tracks, startIndex) }
     }
 
-    override suspend fun enqueue(track: Track) = withHost { it.enqueue(track) }
+    override suspend fun enqueue(track: Track, position: QueueInsertion): AppResult<Unit> =
+        withContext(Dispatchers.Main.immediate) {
+            ++commandGeneration
+            withQueuedHost { it.enqueue(track, position) }
+        }
+
+    private suspend fun <T> withQueuedHost(
+        action: suspend (QueuePlaybackPort) -> AppResult<T>
+    ): AppResult<T> = insertions.run { check ->
+        if (closed)
+            return@run AppResult.Failure(
+                AppError(ErrorCode.SOURCE_UNAVAILABLE, "player.closed", false)
+            )
+        connect()
+        val ready = withTimeoutOrNull(10000) { status.first { it != Status.CONNECTING } }
+        check()
+        val host = graph.playback.value
+        if (ready != Status.CONNECTED || host == null)
+            AppResult.Failure(AppError(ErrorCode.SOURCE_UNAVAILABLE, "player.connect", true))
+        else action(host)
+    }
 
     private suspend fun <T> withHost(
         action: suspend (QueuePlaybackPort) -> AppResult<T>
@@ -121,6 +146,13 @@ class PlayerConnection(private val application: MusicApplication) :
 
     override suspend fun dispatch(command: QueueCommand) {
         withContext(Dispatchers.Main.immediate) {
+            if (command is QueueCommand.SetShuffle || command == QueueCommand.ToggleShuffle) {
+                withQueuedHost { host ->
+                    host.dispatch(command)
+                    AppResult.Success(Unit)
+                }
+                return@withContext
+            }
             val commandId = ++commandGeneration
             connect()
             val ready = withTimeoutOrNull(10000) { status.first { it != Status.CONNECTING } }
@@ -149,6 +181,7 @@ class PlayerConnection(private val application: MusicApplication) :
 
     override fun stop() {
         checkMain()
+        insertions.invalidate()
         ++commandGeneration
         graph.playback.value?.stop()
     }
@@ -157,6 +190,7 @@ class PlayerConnection(private val application: MusicApplication) :
         checkMain()
         if (closed) return
         closed = true
+        insertions.invalidate()
         controllers.close()
         scope.cancel()
     }

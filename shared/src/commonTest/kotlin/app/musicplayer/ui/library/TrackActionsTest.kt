@@ -18,7 +18,10 @@ class TrackActionsTest {
             }
         val port =
             object : EngineeringPort() {
-                override suspend fun enqueue(track: Track): AppResult<Unit> =
+                override suspend fun enqueue(
+                    track: Track,
+                    position: app.musicplayer.queue.QueueInsertion,
+                ): AppResult<Unit> =
                     AppResult.Failure(AppError(ErrorCode.DATABASE, "fixture", true))
             }
         val actions = TrackActions(library, MutableCollections(), port, PresentationDownloads())
