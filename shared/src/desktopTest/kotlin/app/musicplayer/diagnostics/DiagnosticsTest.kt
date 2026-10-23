@@ -4,10 +4,19 @@ import app.musicplayer.model.ErrorCode
 import kotlin.test.*
 
 class DiagnosticsTest {
-    private fun event(id: String = "playback.resolve") = DiagnosticEvent(id, "expiry", "innertubex-0.10.0",
-        "source_123", "PROGRESSIVE", ErrorCode.URL_REJECTED, 123)
+    private fun event(id: String = "playback.resolve") =
+        DiagnosticEvent(
+            id,
+            "expiry",
+            "innertubex-0.10.0",
+            "source_123",
+            "PROGRESSIVE",
+            ErrorCode.URL_REJECTED,
+            123,
+        )
 
-    @Test fun preservesOnlyStructuredDiagnosticFieldsAndExportsWithoutSending() {
+    @Test
+    fun preservesOnlyStructuredDiagnosticFieldsAndExportsWithoutSending() {
         val diagnostics = RedactedDiagnostics()
         diagnostics.record(event())
         val exported = diagnostics.exportRedacted()
@@ -21,21 +30,28 @@ class DiagnosticsTest {
         assertEquals(exported, diagnostics.exportRedacted())
     }
 
-    @Test fun maliciousRedirectUrlsTokensAuthHeadersCookiesPasswordsAndBodiesCannotEscapeAnyField() {
-        val attacks = listOf(
-            "https://cdn.invalid/redirect?signature=test-secret",
-            "//cdn.invalid/redirect?token=test-secret",
-            "https%3A%2F%2Fcdn.invalid%2Fredirect%3Ftoken%3Dtest-secret",
-            "Authorization: Bearer test-secret",
-            "Proxy-Authorization: Basic test-password",
-            "Cookie: session=test-secret",
-            "Set-Cookie: session=test-secret\r\nAuthorization: test-password",
-            "password=test-password", "token:test-secret", "headers.test-secret",
-            "{\"providerBody\":\"test-secret\"}", "stage\nforged-event test-secret",
-        )
+    @Test
+    fun maliciousRedirectUrlsTokensAuthHeadersCookiesPasswordsAndBodiesCannotEscapeAnyField() {
+        val attacks =
+            listOf(
+                "https://cdn.invalid/redirect?signature=test-secret",
+                "//cdn.invalid/redirect?token=test-secret",
+                "https%3A%2F%2Fcdn.invalid%2Fredirect%3Ftoken%3Dtest-secret",
+                "Authorization: Bearer test-secret",
+                "Proxy-Authorization: Basic test-password",
+                "Cookie: session=test-secret",
+                "Set-Cookie: session=test-secret\r\nAuthorization: test-password",
+                "password=test-password",
+                "token:test-secret",
+                "headers.test-secret",
+                "{\"providerBody\":\"test-secret\"}",
+                "stage\nforged-event test-secret",
+            )
         val diagnostics = RedactedDiagnostics()
         for (attack in attacks) {
-            diagnostics.record(DiagnosticEvent(attack, attack, attack, attack, attack, ErrorCode.URL_REJECTED, -1))
+            diagnostics.record(
+                DiagnosticEvent(attack, attack, attack, attack, attack, ErrorCode.URL_REJECTED, -1)
+            )
         }
         val exported = diagnostics.exportRedacted()
         assertFalse(exported.contains("test-secret"))
@@ -45,10 +61,13 @@ class DiagnosticsTest {
         assertFalse(exported.contains("providerBody"))
         assertFalse(exported.contains("forged-event"))
         assertEquals(attacks.size, exported.lines().count { it.isNotEmpty() })
-        assertTrue(exported.lines().filter { it.isNotEmpty() }.all { it.contains("\"elapsedMs\":0") })
+        assertTrue(
+            exported.lines().filter { it.isNotEmpty() }.all { it.contains("\"elapsedMs\":0") }
+        )
     }
 
-    @Test fun localRingAndExportStayWithinOneMiBAndEvictOldestRecords() {
+    @Test
+    fun localRingAndExportStayWithinOneMiBAndEvictOldestRecords() {
         val diagnostics = RedactedDiagnostics()
         diagnostics.record(event("oldest"))
         repeat(10_000) { diagnostics.record(event("operation.$it")) }
@@ -58,11 +77,43 @@ class DiagnosticsTest {
         assertTrue(exported.contains("\"operation.9999\""))
     }
 
-    @Test fun oversizedFieldsAreRedactedAsAWholeBeforeTheyCanEnterTheRing() {
+    @Test
+    fun oversizedFieldsAreRedactedAsAWholeBeforeTheyCanEnterTheRing() {
         val diagnostics = RedactedDiagnostics()
         diagnostics.record(event("x".repeat(2 * 1024 * 1024) + "test-secret"))
         val exported = diagnostics.exportRedacted()
         assertTrue(exported.length < 2048)
         assertFalse(exported.contains("test-secret"))
+    }
+
+    @Test
+    fun typedFiltersAndCountsArePreservedWhileOtherValuesAreDiscarded() {
+        val diagnostics = RedactedDiagnostics()
+        for (filter in listOf("ALL", "TRACKS", "ARTISTS", "ALBUMS", "PLAYLISTS")) diagnostics
+            .record(event().copy(filter = filter, itemCount = 0, pageCount = Int.MAX_VALUE))
+        for (filter in
+            listOf(
+                "secret-query-sentinel",
+                "tracks",
+                " TRACKS",
+                "TRACKS\n",
+                "https://host.invalid?token=sentinel",
+            )) diagnostics.record(event().copy(filter = filter, itemCount = -1, pageCount = -2))
+        val lines = diagnostics.exportRedacted().trim().lines()
+        assertEquals(10, lines.size)
+        for ((index, filter) in
+            listOf("ALL", "TRACKS", "ARTISTS", "ALBUMS", "PLAYLISTS").withIndex()) {
+            assertTrue(lines[index].contains("\"filter\":\"$filter\""))
+            assertTrue(lines[index].contains("\"itemCount\":0"))
+            assertTrue(lines[index].contains("\"pageCount\":2147483647"))
+        }
+        assertTrue(
+            lines.drop(5).all {
+                it.contains("\"filter\":null") &&
+                    it.contains("\"itemCount\":null") &&
+                    it.contains("\"pageCount\":null")
+            }
+        )
+        assertFalse(diagnostics.exportRedacted().contains("sentinel"))
     }
 }
