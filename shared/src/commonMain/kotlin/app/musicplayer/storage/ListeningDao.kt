@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.Flow
 interface ListeningDao {
     @Query(
         """SELECT (SELECT COUNT(*) FROM track_listening) + (SELECT COUNT(*) FROM artist_listening)
-        + (SELECT COUNT(*) FROM listening_sessions) + (SELECT COUNT(*) FROM tracks)"""
+        + (SELECT COUNT(*) FROM listening_sessions) + (SELECT COUNT(*) FROM tracks) + (SELECT COUNT(*) FROM artists) + (SELECT COUNT(*) FROM artist_aliases) + (SELECT COUNT(*) FROM track_artist_overrides) + (SELECT COUNT(*) FROM artist_merges)"""
     )
     fun observeChanges(): Flow<Long>
 
@@ -16,6 +16,9 @@ interface ListeningDao {
 
     @Query("SELECT * FROM artist_listening ORDER BY playedMs DESC, lastPlayedAtMs DESC, `key`")
     suspend fun artists(): List<ArtistListeningRecord>
+
+    @Query("SELECT * FROM listening_sessions ORDER BY id")
+    suspend fun allSessions(): List<ListeningSessionRecord>
 
     @Query("SELECT * FROM listening_sessions WHERE id = :id")
     suspend fun session(id: String): ListeningSessionRecord?

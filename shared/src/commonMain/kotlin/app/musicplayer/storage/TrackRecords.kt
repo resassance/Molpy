@@ -2,7 +2,10 @@ package app.musicplayer.storage
 
 import app.musicplayer.model.*
 
-internal class TrackRecords(private val dao: MusicDao) {
+internal class TrackRecords(database: MusicDatabase) {
+    private val dao = database.dao()
+    private val artists = ArtistStore(database)
+
     suspend fun upsert(track: Track, atMs: Long): TrackId {
         require(track.candidates.map { it.id }.distinct().size == track.candidates.size) {
             "Duplicate candidate IDs"
@@ -27,6 +30,7 @@ internal class TrackRecords(private val dao: MusicDao) {
         }
         dao.deleteCandidates(id.value)
         dao.insertCandidates(RecordMapper.candidates(track, id))
+        artists.registerRaw(track.copy(id = id))
         return id
     }
 

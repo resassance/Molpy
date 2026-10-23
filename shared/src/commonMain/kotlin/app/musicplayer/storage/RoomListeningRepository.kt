@@ -13,7 +13,7 @@ import kotlinx.serialization.json.Json
 class RoomListeningRepository(private val database: MusicDatabase, private val nowMs: () -> Long) :
     ListeningRepository {
     private val dao = database.listeningDao()
-    private val tracks = TrackRecords(database.dao())
+    private val tracks = TrackRecords(database)
     private val json = Json
 
     override val profile: Flow<AppResult<ListeningProfile>> =

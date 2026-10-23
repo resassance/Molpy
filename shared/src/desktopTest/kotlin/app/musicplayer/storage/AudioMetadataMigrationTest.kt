@@ -114,13 +114,32 @@ class AudioMetadataMigrationTest {
                 connection.insert("playlist_items", listOf("item", "playlist", track.id.value, 0))
                 connection.insert(
                     "listening_sessions",
-                    listOf("session", 0, "entry", track.id.value, 1, 10, 9000, "[]"),
+                    listOf(
+                        "session",
+                        1,
+                        "entry",
+                        track.id.value,
+                        1,
+                        9001,
+                        9000,
+                        creditsJson(track),
+                    ),
                 )
                 connection.insert("track_listening", listOf(track.id.value, 9000, 10))
-                connection.insert(
-                    "artist_listening",
-                    listOf("artist", "Artist", null, null, null, 9000, 10),
-                )
+                track.artists.forEachIndexed { index, artist ->
+                    connection.insert(
+                        "artist_listening",
+                        listOf(
+                            app.musicplayer.collections.CollectionGrouping.artistKey(track, index),
+                            artist.name,
+                            artist.source?.provider,
+                            artist.source?.kind,
+                            artist.source?.id,
+                            9000,
+                            9001,
+                        ),
+                    )
+                }
                 connection.insert("settings", listOf("existing", "keep"))
                 val o = OfflineRecordMapper.record(asset)
                 connection.insert(
@@ -179,13 +198,31 @@ class AudioMetadataMigrationTest {
                     }
                 connection.prepare("PRAGMA user_version").use {
                     assertTrue(it.step())
-                    assertEquals(4L, it.getLong(0))
+                    assertEquals(5L, it.getLong(0))
                 }
             }
         } finally {
             directory.deleteRecursively()
         }
     }
+
+    private fun creditsJson(track: Track) = buildJsonArray {
+        track.artists.forEachIndexed { index, artist ->
+            add(
+                buildJsonObject {
+                    put(
+                        "key",
+                        app.musicplayer.collections.CollectionGrouping.artistKey(track, index),
+                    )
+                    put("name", artist.name)
+                    put("provider", artist.source?.provider?.let(::JsonPrimitive) ?: JsonNull)
+                    put("kind", artist.source?.kind?.let(::JsonPrimitive) ?: JsonNull)
+                    put("sourceId", artist.source?.id?.let(::JsonPrimitive) ?: JsonNull)
+                }
+            )
+        }
+    }
+        .toString()
 
     private fun SQLiteConnection.insert(table: String, values: List<Any?>) {
         prepare("INSERT INTO $table VALUES (${values.joinToString { "?" }})").use { statement ->

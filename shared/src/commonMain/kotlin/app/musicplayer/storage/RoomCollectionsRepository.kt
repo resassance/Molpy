@@ -14,7 +14,7 @@ class RoomCollectionsRepository(
     private val nowMs: () -> Long,
 ) : CollectionsRepository {
     private val dao = database.collectionDao()
-    private val tracks = TrackRecords(database.dao())
+    private val tracks = TrackRecords(database)
 
     override val overview: Flow<AppResult<LibraryCollections>> = observe {
         val favorites = dao.favoriteIds().mapNotNull { tracks.load(TrackId(it)) }

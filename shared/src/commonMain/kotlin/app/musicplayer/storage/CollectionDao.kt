@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.Flow
 interface CollectionDao {
     @Query(
         """SELECT (SELECT COUNT(*) FROM playlists) + (SELECT COUNT(*) FROM playlist_items)
-        + (SELECT COUNT(*) FROM favorites) + (SELECT COUNT(*) FROM offline_assets) + (SELECT COUNT(*) FROM tracks)"""
+        + (SELECT COUNT(*) FROM favorites) + (SELECT COUNT(*) FROM offline_assets) + (SELECT COUNT(*) FROM tracks) + (SELECT COUNT(*) FROM artists) + (SELECT COUNT(*) FROM artist_aliases) + (SELECT COUNT(*) FROM track_artist_overrides) + (SELECT COUNT(*) FROM artist_merges)"""
     )
     fun observeChanges(): Flow<Long>
 

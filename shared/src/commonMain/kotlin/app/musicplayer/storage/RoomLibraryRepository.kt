@@ -16,7 +16,7 @@ class RoomLibraryRepository(private val database: MusicDatabase, private val now
     LibraryRepository, OfflineRepository {
     private val dao = database.dao()
     private val offline = database.offlineDao()
-    private val trackRecords = TrackRecords(dao)
+    private val trackRecords = TrackRecords(database)
 
     override suspend fun getOrCreate(source: SourceRef): TrackId = write {
         dao.identity(source.provider, source.kind, source.id)?.let {

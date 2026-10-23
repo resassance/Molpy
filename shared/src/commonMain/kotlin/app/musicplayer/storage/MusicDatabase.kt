@@ -22,8 +22,13 @@ import androidx.room.*
             ListeningSessionRecord::class,
             TrackListeningRecord::class,
             ArtistListeningRecord::class,
+            ArtistProfileRecord::class,
+            ArtistAliasRecord::class,
+            TrackArtistOverrideRecord::class,
+            ArtistMergeRecord::class,
+            SessionArtistRecord::class,
         ],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 @ConstructedBy(MusicDatabaseConstructor::class)
@@ -35,6 +40,8 @@ abstract class MusicDatabase : RoomDatabase() {
     abstract fun offlineDao(): OfflineDao
 
     abstract fun collectionDao(): CollectionDao
+
+    abstract fun artistDao(): ArtistDao
 
     abstract fun listeningDao(): ListeningDao
 }

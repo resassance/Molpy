@@ -20,6 +20,8 @@ interface MusicDao {
 
     @Upsert suspend fun putTrack(record: TrackRecord)
 
+    @Query("SELECT * FROM tracks ORDER BY id") suspend fun allTracks(): List<TrackRecord>
+
     @Query("SELECT * FROM tracks WHERE id = :id") suspend fun track(id: String): TrackRecord?
 
     @Query("SELECT DISTINCT artworkLocalKey FROM tracks WHERE artworkLocalKey IS NOT NULL")
@@ -88,7 +90,8 @@ interface MusicDao {
 
     @Query(
         """SELECT t.* FROM tracks t
-        WHERE NOT EXISTS (SELECT 1 FROM favorites f WHERE f.trackId = t.id)
+        WHERE NOT EXISTS (SELECT 1 FROM track_artist_overrides a WHERE a.trackId = t.id)
+        AND NOT EXISTS (SELECT 1 FROM favorites f WHERE f.trackId = t.id)
         AND NOT EXISTS (SELECT 1 FROM recent_history r WHERE r.trackId = t.id)
         AND NOT EXISTS (SELECT 1 FROM offline_assets o WHERE o.trackId = t.id)
         AND NOT EXISTS (SELECT 1 FROM playlist_items p WHERE p.trackId = t.id)

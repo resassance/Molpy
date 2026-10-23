@@ -195,7 +195,7 @@ class CollectionMigrationTest {
                 BundledSQLiteDriver().open(path).use { connection ->
                     connection.prepare("PRAGMA user_version").use { stmt ->
                         assertTrue(stmt.step())
-                        assertEquals(4L, stmt.getLong(0))
+                        assertEquals(5L, stmt.getLong(0))
                     }
                     connection
                         .prepare(
