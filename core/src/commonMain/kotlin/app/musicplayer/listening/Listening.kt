@@ -25,6 +25,7 @@ data class ListeningProfile(
     val totalMs: Long = 0,
     val tracks: List<TrackListening> = emptyList(),
     val artists: List<ArtistListening> = emptyList(),
+    val artistRevision: Long = 0,
 )
 
 data class HistoryItem(val id: String, val track: Track, val startedAtMs: Long, val playedMs: Long?)

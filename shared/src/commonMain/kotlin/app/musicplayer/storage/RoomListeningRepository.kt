@@ -1,6 +1,7 @@
 package app.musicplayer.storage
 
 import androidx.room.*
+import app.musicplayer.artists.*
 import app.musicplayer.collections.CollectionGrouping
 import app.musicplayer.listening.*
 import app.musicplayer.model.*
@@ -15,6 +16,7 @@ class RoomListeningRepository(private val database: MusicDatabase, private val n
     private val dao = database.listeningDao()
     private val tracks = TrackRecords(database)
     private val json = Json
+    private val artistStore = ArtistStore(database)
 
     override val profile: Flow<AppResult<ListeningProfile>> =
         dao.observeChanges()
@@ -29,19 +31,14 @@ class RoomListeningRepository(private val database: MusicDatabase, private val n
                                     record.lastPlayedAtMs,
                                 )
                             }
+                        val directory = artistStore.snapshot()
                         val rankedArtists =
                             dao.artists().map { record ->
-                                val source =
-                                    record.provider?.let {
-                                        SourceRef(
-                                            it,
-                                            requireNotNull(record.kind),
-                                            requireNotNull(record.sourceId),
-                                        )
-                                    }
+                                val resolved =
+                                    ArtistResolver.profile(ArtistId(record.key), directory)
                                 ArtistListening(
                                     record.key,
-                                    ArtistRef(record.name, source),
+                                    ArtistRef(resolved.name, resolved.source),
                                     record.playedMs,
                                     record.lastPlayedAtMs,
                                 )
@@ -50,6 +47,7 @@ class RoomListeningRepository(private val database: MusicDatabase, private val n
                             rankedTracks.fold(0L) { sum, track -> addTime(sum, track.playedMs) },
                             rankedTracks,
                             rankedArtists,
+                            directory.revision,
                         )
                     }
                 }
@@ -61,8 +59,10 @@ class RoomListeningRepository(private val database: MusicDatabase, private val n
 
     override suspend fun save(checkpoint: ListeningCheckpoint): AppResult<Unit> =
         result("listening.save") {
+            val callerContext = currentCoroutineContext()
             database.useWriterConnection { connection ->
                 connection.immediateTransaction {
+                    callerContext.ensureActive()
                     val c = checkpoint
                     require(
                         c.sessionId.isNotBlank() &&
@@ -116,20 +116,40 @@ class RoomListeningRepository(private val database: MusicDatabase, private val n
                             maxOf(priorTrack?.lastPlayedAtMs ?: Long.MIN_VALUE, c.lastPlayedAtMs),
                         )
                     )
-                    for (credit in credits) {
-                        val prior = dao.artist(credit.key)
+                    val artistDao = database.artistDao()
+                    if (old == null) {
+                        val directory = artistStore.snapshot()
+                        val originalIds =
+                            c.track.artists.indices
+                                .mapNotNull { directory.aliases[ArtistResolver.alias(c.track, it)] }
+                                .distinct()
+                        artistDao.insertCredits(
+                            originalIds.map { SessionArtistRecord(c.sessionId, it.value) }
+                        )
+                    }
+                    val directory = artistStore.snapshot()
+                    val originalIds =
+                        artistDao.sessionCredits(c.sessionId).map { ArtistId(it.artistId) }
+                    val effective =
+                        (directory.overrides[canonical] ?: originalIds)
+                            .map { ArtistResolver.root(it, directory) }
+                            .distinct()
+                    for (id in effective) {
+                        val profile = ArtistResolver.profile(id, directory)
+                        val prior = dao.artist(id.value)
                         dao.putArtist(
                             ArtistListeningRecord(
-                                credit.key,
-                                credit.name,
-                                credit.provider,
-                                credit.kind,
-                                credit.sourceId,
+                                id.value,
+                                profile.name,
+                                profile.source?.provider,
+                                profile.source?.kind,
+                                profile.source?.id,
                                 addTime(prior?.playedMs ?: 0, delta),
                                 maxOf(prior?.lastPlayedAtMs ?: Long.MIN_VALUE, c.lastPlayedAtMs),
                             )
                         )
                     }
+                    callerContext.ensureActive()
                 }
             }
         }

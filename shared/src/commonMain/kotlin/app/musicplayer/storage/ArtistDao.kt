@@ -33,6 +33,9 @@ interface ArtistDao {
     @Query("SELECT * FROM track_artist_overrides WHERE trackId=:id ORDER BY position")
     suspend fun override(id: String): List<TrackArtistOverrideRecord>
 
+    @Query("SELECT * FROM listening_artist_credits WHERE sessionId=:id ORDER BY artistId")
+    suspend fun sessionCredits(id: String): List<SessionArtistRecord>
+
     @Upsert suspend fun putProfile(record: ArtistProfileRecord)
 
     @Insert suspend fun insertAlias(record: ArtistAliasRecord)

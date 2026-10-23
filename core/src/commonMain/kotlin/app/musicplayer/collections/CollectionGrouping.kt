@@ -1,5 +1,6 @@
 package app.musicplayer.collections
 
+import app.musicplayer.artists.*
 import app.musicplayer.model.*
 
 object CollectionGrouping {
@@ -35,6 +36,23 @@ object CollectionGrouping {
         }
         return albums to
             artists.map { (key, value) -> SavedArtist(key, value.first, value.second.toList()) }
+    }
+
+    fun build(
+        tracks: List<Track>,
+        directory: ArtistDirectory,
+    ): Pair<List<SavedAlbum>, List<SavedArtist>> {
+        val albums = build(tracks).first
+        val groups = linkedMapOf<String, Pair<ArtistRef, MutableList<Track>>>()
+        for (track in tracks.distinctBy { it.id }) for (credit in
+            ArtistResolver.present(track, directory).artists) {
+            val key = credit.id?.value ?: credit.alias.value
+            val group =
+                groups.getOrPut(key) { ArtistRef(credit.name, credit.source) to mutableListOf() }
+            group.second.add(track)
+        }
+        return albums to
+            groups.map { (key, value) -> SavedArtist(key, value.first, value.second.toList()) }
     }
 
     private fun sourceKey(source: SourceRef) =

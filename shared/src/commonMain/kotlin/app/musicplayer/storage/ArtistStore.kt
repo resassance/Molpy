@@ -61,19 +61,21 @@ internal class ArtistStore(private val database: MusicDatabase) {
         return old + 1
     }
 
-    suspend fun rebuildListening() {
+    suspend fun sessions(): List<ArtistSessionSnapshot> {
         val credits = dao.credits().groupBy { it.sessionId }
-        val sessions =
-            database.listeningDao().allSessions().map {
-                ArtistSessionSnapshot(
-                    it.id,
-                    TrackId(it.trackId),
-                    credits[it.id].orEmpty().map { credit -> ArtistId(credit.artistId) },
-                    it.playedMs,
-                    it.lastPlayedAtMs,
-                )
-            }
-        val totals = ArtistListeningProjection.aggregate(sessions, snapshot())
+        return database.listeningDao().allSessions().map {
+            ArtistSessionSnapshot(
+                it.id,
+                TrackId(it.trackId),
+                credits[it.id].orEmpty().map { credit -> ArtistId(credit.artistId) },
+                it.playedMs,
+                it.lastPlayedAtMs,
+            )
+        }
+    }
+
+    suspend fun rebuildListening() {
+        val totals = ArtistListeningProjection.aggregate(sessions(), snapshot())
         dao.clearListening()
         for (total in totals) database
             .listeningDao()

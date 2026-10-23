@@ -19,7 +19,8 @@ class RoomCollectionsRepository(
     override val overview: Flow<AppResult<LibraryCollections>> = observe {
         val favorites = dao.favoriteIds().mapNotNull { tracks.load(TrackId(it)) }
         val collected = dao.collectionTrackIds().mapNotNull { tracks.load(TrackId(it)) }
-        val (albums, artists) = CollectionGrouping.build(collected)
+        val directory = ArtistStore(database).snapshot()
+        val (albums, artists) = CollectionGrouping.build(collected, directory)
         val playlists =
             dao.playlists().map { playlist ->
                 val items = loadItems(playlist.id)
@@ -30,7 +31,7 @@ class RoomCollectionsRepository(
                     items.map { it.track.artwork }.distinct().take(4),
                 )
             }
-        LibraryCollections(favorites, playlists, albums, artists)
+        LibraryCollections(favorites, playlists, albums, artists, directory.revision)
     }
 
     override fun playlist(id: PlaylistId): Flow<AppResult<PlaylistDetail?>> = observe {

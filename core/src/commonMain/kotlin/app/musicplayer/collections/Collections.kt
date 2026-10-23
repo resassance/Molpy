@@ -41,4 +41,5 @@ data class LibraryCollections(
     val playlists: List<PlaylistSummary> = emptyList(),
     val albums: List<SavedAlbum> = emptyList(),
     val artists: List<SavedArtist> = emptyList(),
+    val artistRevision: Long = 0,
 )
