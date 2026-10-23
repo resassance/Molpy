@@ -178,6 +178,30 @@ class AndroidPlayerEngine(
         }
     }
 
+    fun updateArtists(
+        trackId: TrackId,
+        entryId: QueueEntryId,
+        loadId: Long,
+        names: List<String>,
+    ): Boolean {
+        checkMain()
+        if (released || track?.id != trackId || entry?.id != entryId || this.loadId != loadId)
+            return false
+        val current = player.currentMediaItem ?: return false
+        if (current.mediaId != entryId.value || current.localConfiguration?.tag != loadId)
+            return false
+        val label = names.joinToString(", ")
+        if (current.mediaMetadata.artist?.toString() == label) return true
+        val updated =
+            current
+                .buildUpon()
+                .setMediaMetadata(current.mediaMetadata.buildUpon().setArtist(label).build())
+                .build()
+        // Pinned Progressive/HLS sources accept this unchanged configuration in place.
+        player.replaceMediaItem(player.currentMediaItemIndex, updated)
+        return true
+    }
+
     override fun stop() {
         checkMain()
         if (released) return

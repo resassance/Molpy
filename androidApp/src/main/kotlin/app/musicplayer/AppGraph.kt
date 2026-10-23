@@ -251,6 +251,7 @@ class AppGraph(private val context: Context) {
             audioMetadata,
             playbackPreferences,
             audioMetadataRecorder,
+            artists,
         )
 }
 
@@ -269,6 +270,7 @@ internal class PlaybackRuntime(
     audioMetadata: AudioMetadataRepository? = null,
     playbackPreferences: PlaybackPreferencesRepository? = null,
     private val audioMetadataRecorder: AudioMetadataRecorder? = null,
+    artists: ArtistRepository? = null,
 ) {
     private val local = OfflineMediaSource(downloads.cache)
     val engine =
@@ -280,6 +282,9 @@ internal class PlaybackRuntime(
             normalizationEnabled =
                 playbackPreferences?.normalizationEnabled ?: MutableStateFlow(true),
         )
+    private val artistMetadata = artists?.let {
+        ArtistMetadataObserver(engine.snapshot, it.directory, engine::updateArtists, scope)
+    }
     private var extractionWarmup: Job? = null
     private var extraction: ExtractionSession? =
         if (network.context.value.ready) newExtraction() else null
@@ -429,6 +434,7 @@ internal class PlaybackRuntime(
             }
 
     suspend fun closeExtraction() {
+        artistMetadata?.close()
         closed = true
         network.transport.removeListener(listener)
         val previous =
