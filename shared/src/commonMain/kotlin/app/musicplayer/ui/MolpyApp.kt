@@ -369,7 +369,16 @@ fun MolpyApp(
                             },
                         )
                     AppOverlay.Queue ->
-                        QueueSheet(player, models.player, artwork) { navigation.back() }
+                        QueueSheet(
+                            player,
+                            models.player,
+                            artwork,
+                            onOpenPublicPlaylist = {
+                                models.publicPlaylist?.refresh(it)
+                                navigation.push(AppRoute.PublicPlaylist(it))
+                            },
+                            onClose = { navigation.back() },
+                        )
                     AppOverlay.Lyrics ->
                         LyricsScreen(player, { navigation.back() }, models.player::loadLyrics)
                     is AppOverlay.TrackMenu ->

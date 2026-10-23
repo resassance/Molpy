@@ -18,6 +18,7 @@ import app.musicplayer.model.*
 import app.musicplayer.network.*
 import app.musicplayer.playback.*
 import app.musicplayer.queue.*
+import app.musicplayer.search.MusicSearchCoordinator
 import app.musicplayer.search.SearchCoordinator
 import app.musicplayer.storage.RoomArtistRepository
 import app.musicplayer.storage.RoomAudioMetadataRepository
@@ -29,6 +30,7 @@ import app.musicplayer.storage.createMusicDatabase
 import app.musicplayer.ui.MolpyModels
 import app.musicplayer.ui.artists.*
 import app.musicplayer.ui.catalog.CatalogModel
+import app.musicplayer.ui.catalog.PublicPlaylistModel
 import app.musicplayer.ui.components.TrackActions
 import app.musicplayer.ui.downloads.DownloadsModel
 import app.musicplayer.ui.library.LibraryModel
@@ -93,10 +95,12 @@ class AppGraph(private val context: Context) {
     private var catalogSession: InnerTube? = null
     private var activeCatalog: CatalogPort? = null
     private var activeBrowse: BrowseCatalog? = null
+    private var activeMusicSearch: MusicSearchPort? = null
     private var activeArtistSearch: ArtistSearchPort? = null
     private val artistSearch: ArtistSearchPort =
         RoutedArtistSearch({ activeArtistSearch }, { network.context.value })
-    val browse: BrowseCatalog = RoutedBrowseCatalog({ activeBrowse }, { network.context.value })
+    val browse: BrowseCatalog =
+        RoutedBrowseCatalog({ activeBrowse }, { network.context.value }, diagnostics::record)
     private var activeLyrics: LyricsPort? = null
     private val remoteCatalog =
         object : CatalogPort {
@@ -118,6 +122,15 @@ class AppGraph(private val context: Context) {
         }
     private val catalog = CachedCatalog(remoteCatalog, library, System::currentTimeMillis)
     private val search = SearchCoordinator(catalog)
+    private val musicSearch =
+        MusicSearchCoordinator(
+            RoutedMusicSearch(
+                { activeMusicSearch },
+                { network.context.value },
+                diagnostics::record,
+            ),
+            search,
+        )
     private val lyrics =
         LyricsLoader(
             listOf(
@@ -172,6 +185,7 @@ class AppGraph(private val context: Context) {
                         if (artworkDelegate.isInitialized()) artwork.networkInvalidated()
                         activeCatalog = null
                         activeBrowse = null
+                        activeMusicSearch = null
                         activeArtistSearch = null
                         activeLyrics = null
                         catalogSession?.close()
@@ -184,6 +198,8 @@ class AppGraph(private val context: Context) {
                         val session = InnerTube(network.transport.http)
                         catalogSession = session
                         activeCatalog = InnerTubeCatalog(session, library)
+                        activeMusicSearch =
+                            InnerTubeMusicSearch(session, context.generation, library)
                         activeBrowse = InnerTubeBrowseCatalog(session, context.generation, library)
                         activeArtistSearch =
                             InnerTubeArtistSearch(session, requireNotNull(activeBrowse))
@@ -221,7 +237,7 @@ class AppGraph(private val context: Context) {
         val directory = ArtistDirectoryModel(artists, ownerScope)
         return MolpyModels(
                 PlayerModel(player, library, lyrics, ownerScope),
-                SearchModel(search, player, ownerScope),
+                SearchModel(musicSearch, player, ownerScope),
                 LibraryModel(collections, player, ownerScope, directory.state),
                 CatalogModel(browse, collections, player, ownerScope, directory.state),
                 ProfileModel(listening, player, ownerScope, directory.state),
@@ -234,6 +250,7 @@ class AppGraph(private val context: Context) {
                 artistEditor = ArtistEditorModel(artists, artistSearch, ownerScope),
                 artistMerge = ArtistMergeModel(artists, ownerScope),
                 artistRepository = artists,
+                publicPlaylist = PublicPlaylistModel(browse, player, ownerScope),
             )
             .also { models.add(WeakReference(it)) }
     }

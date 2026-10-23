@@ -8,6 +8,18 @@ import kotlinx.coroutines.test.*
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class QueuePlaylistRecoveryTest {
+    @Test
+    fun selectingKnownRestoredEntryWithPlayIntentStartsSourceRecovery() = runTest {
+        val h = QueuePlaylistTestFixture(backgroundScope)
+        val saved = restored(h)
+        h.catalog.head = { _, _ -> head(h, listOf("a", "b", "c")) }
+        assertIs<AppResult.Success<Unit>>(h.playback.queue.select(saved.entries[1], 0, true))
+        runCurrent()
+        assertEquals(1, h.catalog.headCalls)
+        assertEquals(listOf("c"), h.future())
+        assertEquals("b", h.playback.engine.snapshot.value.track!!.id.value)
+    }
+
     private suspend fun restored(
         h: QueuePlaylistTestFixture,
         ids: List<String> = listOf("a", "b"),

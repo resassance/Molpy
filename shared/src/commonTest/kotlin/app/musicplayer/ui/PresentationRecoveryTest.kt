@@ -5,6 +5,7 @@ import app.musicplayer.collections.*
 import app.musicplayer.listening.*
 import app.musicplayer.lyrics.*
 import app.musicplayer.model.*
+import app.musicplayer.search.MusicSearchCoordinator
 import app.musicplayer.search.SearchCoordinator
 import app.musicplayer.ui.library.LibraryModel
 import app.musicplayer.ui.player.PlayerModel
@@ -202,14 +203,19 @@ class PresentationRecoveryTest {
             }
         val before = port.snapshot.value
         val player = PlayerModel(port, EngineeringLibrary(), loader, backgroundScope)
-        val search = SearchModel(SearchCoordinator(catalog), port, backgroundScope)
+        val search =
+            SearchModel(
+                MusicSearchCoordinator(EmptyPrimaryMusicSearch, SearchCoordinator(catalog)),
+                port,
+                backgroundScope,
+            )
         search.search("song")
         runCurrent()
         search.networkInvalidated()
         player.networkInvalidated()
         gate.complete(Unit)
         runCurrent()
-        assertTrue(search.state.value.data.orEmpty().isEmpty())
+        assertTrue(search.state.value.page?.tracks().orEmpty().isEmpty())
         assertFalse(search.state.value.loading)
         assertNull(player.state.value.lyrics)
         assertFalse(player.state.value.loadingLyrics)

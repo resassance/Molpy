@@ -65,6 +65,15 @@ class QueuePlaylistLoader(
                                 seed.next,
                             )
                         if (ready) start(requireNotNull(runtime))
+                    } else if (
+                        state.playWhenReady &&
+                            source.hasMore &&
+                            source.phase != QueueSourcePhase.CHANGED
+                    ) {
+                        enabled = true
+                        runtime =
+                            SourceRuntime(source.sessionId, emptyList(), null, needsRecovery = true)
+                        if (ready) start(requireNotNull(runtime))
                     }
                 }
             }
@@ -138,9 +147,25 @@ class QueuePlaylistLoader(
 
     private fun currentRuntime(source: QueueSourceState): SourceRuntime =
         runtime?.takeIf { it.sessionId == source.sessionId }
-            ?: SourceRuntime(source.sessionId, emptyList(), null, needsRecovery = true).also {
-                runtime = it
-            }
+            ?: SourceRuntime(
+                    source.sessionId,
+                    emptyList(),
+                    null,
+                    needsRecovery = source.phase != QueueSourcePhase.COMPLETE,
+                )
+                .also {
+                    if (source.phase == QueueSourcePhase.COMPLETE) {
+                        it.staged =
+                            StagedPage(
+                                source.acceptedRows.size,
+                                emptyList(),
+                                emptyList(),
+                                null,
+                                complete = true,
+                            )
+                    }
+                    runtime = it
+                }
 
     fun stop() {
         ++requestGeneration

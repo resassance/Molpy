@@ -9,6 +9,23 @@ import kotlinx.coroutines.test.*
 @OptIn(ExperimentalCoroutinesApi::class)
 class QueuePlaylistLoaderTest {
     @Test
+    fun completedPageSaveRetryAfterRuntimeResetDoesNotNeedNetwork() = runTest {
+        val h = QueuePlaylistTestFixture(backgroundScope)
+        h.failCommit = true
+        h.loader.play(h.request(listOf("a", "b"), next = null))
+        runCurrent()
+        assertEquals(QueueSourcePhase.COMPLETE, h.playback.queue.state.value.source!!.phase)
+        val ids = h.playback.queue.state.value.entries.map { it.id }
+        h.loader.stop()
+        h.failCommit = false
+        assertIs<AppResult.Success<Unit>>(h.loader.retry())
+        assertEquals(0, h.catalog.headCalls)
+        assertEquals(ids, h.playback.queue.state.value.entries.map { it.id })
+        assertEquals(QueueSourcePhase.COMPLETE, h.durable.source!!.phase)
+        assertNull(h.durable.source!!.error)
+    }
+
+    @Test
     fun selectedTrackResolvesBeforeBlockedRemainingPage() = runTest {
         val h = QueuePlaylistTestFixture(backgroundScope)
         val gate = CompletableDeferred<Unit>()

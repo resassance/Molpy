@@ -4,7 +4,6 @@ import app.musicplayer.catalog.*
 import app.musicplayer.model.*
 import app.musicplayer.queue.QueuePlaybackPort
 import app.musicplayer.search.MusicSearchCoordinator
-import app.musicplayer.search.SearchCoordinator
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 
@@ -26,12 +25,6 @@ class SearchModel(
     private val player: QueuePlaybackPort,
     ownerScope: CoroutineScope,
 ) {
-    constructor(
-        search: SearchCoordinator,
-        player: QueuePlaybackPort,
-        ownerScope: CoroutineScope,
-    ) : this(MusicSearchCoordinator(EmptyMusicSearch, search), player, ownerScope)
-
     private val job = SupervisorJob(ownerScope.coroutineContext[Job])
     private val scope = CoroutineScope(ownerScope.coroutineContext + job)
     private val mutable = MutableStateFlow(SearchScreenState())
@@ -121,6 +114,8 @@ class SearchModel(
                             error = AppError(ErrorCode.UNKNOWN, "search.ui", true),
                         )
                     }
+            } finally {
+                if (selected == generation && job.isActive) update { it.copy(loading = false) }
             }
         }
     }
@@ -257,12 +252,4 @@ class SearchModel(
         }
         return current.copy(sections = sections, next = next.next)
     }
-}
-
-private object EmptyMusicSearch : MusicSearchPort {
-    override suspend fun search(query: String, filter: SearchFilter) =
-        AppResult.Success(SearchPage(null, emptyList(), null))
-
-    override suspend fun more(cursor: CatalogCursor): AppResult<SearchPage> =
-        AppResult.Failure(AppError(ErrorCode.SOURCE_UNAVAILABLE, "search.more", false))
 }

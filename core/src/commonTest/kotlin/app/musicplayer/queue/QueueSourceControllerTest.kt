@@ -8,6 +8,24 @@ import kotlinx.coroutines.test.*
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class QueueSourceControllerTest {
+    @Test
+    fun nextInsertionStartsWhenCurrentWasRemovedAtUnknownBoundary() = runTest {
+        val f = PlaylistQueueFixture(backgroundScope)
+        f.start()
+        runCurrent()
+        f.queue.dispatch(QueueCommand.Remove(QueueEntryId("a")))
+        runCurrent()
+        assertNull(f.queue.state.value.currentEntryId)
+        assertTrue(f.queue.state.value.source!!.waiting)
+        assertTrue(f.queue.state.value.playWhenReady)
+        f.queue.dispatch(QueueCommand.Add(listOf(f.entry("b")), QueueInsertion.NEXT))
+        runCurrent()
+        assertEquals("b", f.queue.snapshot.value.track?.id?.value)
+        assertEquals(PlayerStatus.PLAYING, f.queue.snapshot.value.status)
+        assertEquals(2, f.engine.loads)
+        assertFalse(f.queue.state.value.source!!.waiting)
+    }
+
     private fun identity(n: Int, id: String) =
         PlaylistRowIdentity(n, "row-$n", SourceRef("youtube", "video", id))
 

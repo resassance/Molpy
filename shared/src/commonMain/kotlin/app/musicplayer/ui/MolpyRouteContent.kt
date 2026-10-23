@@ -10,6 +10,7 @@ import app.musicplayer.collections.*
 import app.musicplayer.downloads.DownloadState
 import app.musicplayer.model.*
 import app.musicplayer.ui.catalog.CatalogScreen
+import app.musicplayer.ui.catalog.PublicPlaylistScreen
 import app.musicplayer.ui.downloads.DownloadsScreen
 import app.musicplayer.ui.library.*
 import app.musicplayer.ui.navigation.*
@@ -48,6 +49,7 @@ internal fun MolpyRouteContent(
     val artist: (SavedArtist) -> Unit = { navigation.push(artistRoute(it.ref, it.key)) }
     LaunchedEffect(route, directory?.revision) {
         when (route) {
+            is AppRoute.PublicPlaylist -> models.publicPlaylist?.open(route.ref)
             is AppRoute.Album -> models.catalog.album(route.ref, route.localKey)
             is AppRoute.Artist ->
                 if (route.artistId != null) models.catalog.localArtist(route.artistId)
@@ -83,6 +85,9 @@ internal fun MolpyRouteContent(
                         artwork,
                         models.player.state.value.currentTrack?.id,
                         onMenu,
+                        onArtist = { navigation.push(AppRoute.Artist(it)) },
+                        onAlbum = { navigation.push(AppRoute.Album(it)) },
+                        onPublicPlaylist = { navigation.push(AppRoute.PublicPlaylist(it)) },
                     )
                 AppTab.PROFILE ->
                     ProfileScreen(
@@ -116,6 +121,18 @@ internal fun MolpyRouteContent(
                 artist,
                 onCreate,
             )
+        is AppRoute.PublicPlaylist -> {
+            val model = models.publicPlaylist
+            if (model != null) {
+                val state by model.state.collectAsState()
+                if (state.ref?.source == route.ref.source)
+                    PublicPlaylistScreen(model, artwork, back, onMenu)
+                else
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
+            }
+        }
         is AppRoute.Playlist ->
             PlaylistScreen(route.id, models.library, artwork, back, onRename, onDelete, onMenu)
         is AppRoute.Album,

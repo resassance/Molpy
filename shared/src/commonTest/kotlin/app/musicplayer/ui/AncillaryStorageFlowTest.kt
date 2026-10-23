@@ -3,6 +3,7 @@ package app.musicplayer.ui
 import app.musicplayer.catalog.*
 import app.musicplayer.lyrics.*
 import app.musicplayer.model.*
+import app.musicplayer.search.MusicSearchCoordinator
 import app.musicplayer.search.SearchCoordinator
 import app.musicplayer.ui.player.PlayerModel
 import app.musicplayer.ui.search.SearchModel
@@ -120,10 +121,10 @@ class AncillaryStorageFlowTest {
         )
         rig.assertStable()
         broken = false
-        rig.search.search("Song")
+        rig.search.retry()
         runCurrent()
         assertNull(rig.search.state.value.error)
-        assertEquals(listOf(song), rig.search.state.value.data)
+        assertEquals(listOf(song), rig.search.state.value.page?.tracks())
         assertFalse(rig.search.state.value.loading)
         rig.assertStable()
         rig.close()
@@ -153,10 +154,10 @@ class AncillaryStorageFlowTest {
         assertFalse(rig.search.state.value.loading)
         rig.assertStable()
         broken = false
-        rig.search.search("Song")
+        rig.search.retry()
         runCurrent()
         assertNull(rig.search.state.value.error)
-        assertEquals(listOf(song), rig.search.state.value.data)
+        assertEquals(listOf(song), rig.search.state.value.page?.tracks())
         assertEquals(song, library.tracks[song.id])
         rig.assertStable()
         rig.close()
@@ -182,9 +183,9 @@ class AncillaryStorageFlowTest {
         assertFalse(rig.search.state.value.loading)
         rig.assertStable()
         broken = false
-        rig.search.search("Song")
+        rig.search.retry()
         runCurrent()
-        assertEquals(listOf(song), rig.search.state.value.data)
+        assertEquals(listOf(song), rig.search.state.value.page?.tracks())
         assertNull(rig.search.state.value.error)
         rig.assertStable()
         rig.close()
@@ -393,7 +394,7 @@ class AncillaryStorageFlowTest {
             newGate.complete(Unit)
             runCurrent()
             assertEquals("Song", rig.search.query.value)
-            assertEquals(listOf(song), rig.search.state.value.data)
+            assertEquals(listOf(song), rig.search.state.value.page?.tracks())
             rig.assertStable()
             rig.close()
         }
@@ -491,7 +492,10 @@ class AncillaryStorageFlowTest {
             )
         val search =
             SearchModel(
-                SearchCoordinator(CachedCatalog(catalog, library) { 0L }),
+                MusicSearchCoordinator(
+                    EmptyPrimaryMusicSearch,
+                    SearchCoordinator(CachedCatalog(catalog, library) { 0L }),
+                ),
                 port,
                 backgroundScope,
             )

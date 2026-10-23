@@ -29,7 +29,11 @@ internal class QueueSessionPlayer(
         val q = host.queue.value
         for (command in
             listOf(Player.COMMAND_SEEK_TO_NEXT, Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)) {
-            if (q.currentEntryId != null && QueueOrder.next(q) != null) commands.add(command)
+            if (
+                (q.currentEntryId != null || q.source?.waiting == true) &&
+                    (QueueOrder.next(q) != null || q.source?.hasMore == true)
+            )
+                commands.add(command)
             else commands.remove(command)
         }
         for (command in

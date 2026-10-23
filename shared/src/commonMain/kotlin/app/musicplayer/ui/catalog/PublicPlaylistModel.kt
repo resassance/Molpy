@@ -37,6 +37,8 @@ class PublicPlaylistModel(
 
     fun open(ref: PublicPlaylistRef) = open(ref, refresh = false)
 
+    fun refresh(ref: PublicPlaylistRef) = open(ref, refresh = true)
+
     private fun open(ref: PublicPlaylistRef, refresh: Boolean) {
         if (
             !refresh &&

@@ -239,6 +239,11 @@ fun NowPlayingScreen(
                                 ) {
                                     val error = state.snapshot.error ?: state.commandError
                                     val gap = queue.gap
+                                    val retrySource =
+                                        queue.sourceCanRetry &&
+                                            (error == queue.sourceError ||
+                                                (error?.code == ErrorCode.DATABASE &&
+                                                    queue.sourceError?.code == ErrorCode.DATABASE))
                                     when {
                                         error != null ->
                                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -250,17 +255,9 @@ fun NowPlayingScreen(
                                                     maxLines = 2,
                                                     overflow = TextOverflow.Ellipsis,
                                                 )
-                                                if (
-                                                    error.retryable ||
-                                                        (state.snapshot.error == null &&
-                                                            queue.sourceCanRetry)
-                                                )
+                                                if (error.retryable || retrySource)
                                                     TextButton(
-                                                        if (
-                                                            state.snapshot.error == null &&
-                                                                queue.sourceCanRetry
-                                                        )
-                                                            model::retryQueueSource
+                                                        if (retrySource) model::retryQueueSource
                                                         else model::retry
                                                     ) {
                                                         Text("Повторить")

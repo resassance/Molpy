@@ -10,6 +10,31 @@ import kotlinx.coroutines.test.*
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class PublicPlaylistModelTest {
+    @Test
+    fun reopeningChangedPlaylistReadsFreshHeadAndDoesNotReplacePlayingQueue() = runTest {
+        val refreshes = mutableListOf<Boolean>()
+        val browse =
+            object : Browse() {
+                override suspend fun playlist(
+                    ref: PublicPlaylistRef,
+                    refresh: Boolean,
+                ): AppResult<PublicPlaylistCatalog> {
+                    refreshes += refresh
+                    return AppResult.Success(catalog(ref, listOf(row(0, if (refresh) b else a))))
+                }
+            }
+        val player = Player()
+        val model = PublicPlaylistModel(browse, player, backgroundScope)
+        model.open(ref)
+        runCurrent()
+        model.refresh(ref)
+        runCurrent()
+        assertEquals(listOf(false, true), refreshes)
+        assertEquals(b, model.state.value.tracks.data!!.items.single().track)
+        assertTrue(player.requests.isEmpty())
+        assertEquals(0, player.stops)
+    }
+
     private val ref = PublicPlaylistRef("Playlist", SourceRef("youtube", "playlist", "PLone"))
     private val next = CatalogCursor("next")
     private val failure = AppError(ErrorCode.NETWORK, "fixture", true)

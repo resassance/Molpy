@@ -168,7 +168,8 @@ class QueueController(
                 }
                 command is QueueCommand.Add &&
                     before.currentEntryId == null &&
-                    after.currentEntryId != null -> {
+                    after.currentEntryId != null &&
+                    !after.playWhenReady -> {
                     cancelSelection()
                     restoredPosition = true
                     val selectedGeneration = generation

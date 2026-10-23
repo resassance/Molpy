@@ -102,7 +102,8 @@ class AppNavigation(initial: NavigationState = NavigationState()) {
             return
         }
         val s = mutable.value
-        if (s.current != route)
+        if (s.current == route) mutable.value = s.copy(overlays = emptyList())
+        else
             mutable.value =
                 s.copy(
                     stacks =

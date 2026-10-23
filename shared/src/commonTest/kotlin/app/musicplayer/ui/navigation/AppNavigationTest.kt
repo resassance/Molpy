@@ -7,6 +7,24 @@ import kotlin.test.*
 
 class AppNavigationTest {
     @Test
+    fun reopeningCurrentPublicPlaylistDismissesPlayerAndQueueOverlays() {
+        val nav = AppNavigation()
+        val route =
+            AppRoute.PublicPlaylist(
+                PublicPlaylistRef("List", SourceRef("youtube", "playlist", "PLsame"))
+            )
+        nav.push(route)
+        nav.open(AppOverlay.Queue)
+        assertEquals(2, nav.state.value.overlays.size)
+        nav.push(route)
+        assertTrue(nav.state.value.overlays.isEmpty())
+        assertEquals(
+            listOf(AppRoute.Root(AppTab.LIBRARY), route),
+            nav.state.value.stacks.getValue(AppTab.LIBRARY),
+        )
+    }
+
+    @Test
     fun playlistAndLocalPlaylistRoutesStayDistinct() {
         val nav = AppNavigation()
         val ref =
