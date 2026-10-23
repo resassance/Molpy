@@ -18,7 +18,10 @@ class TrackActions(
         library.setFavorite(track.id, value)
     }
 
-    suspend fun enqueue(track: Track): AppResult<Unit> = player.enqueue(track)
+    suspend fun enqueue(
+        track: Track,
+        position: QueueInsertion = QueueInsertion.END,
+    ): AppResult<Unit> = player.enqueue(track, position)
 
     suspend fun append(playlistId: PlaylistId, track: Track): AppResult<Unit> =
         when (val result = collections.append(playlistId, track)) {

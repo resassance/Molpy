@@ -31,6 +31,7 @@ class PlayerModel(
     )
 
     private var motionRequest: MotionRequest? = null
+    private var motionQueue = player.queue.value
 
     private data class LyricsBinding(
         val entryId: QueueEntryId?,
@@ -53,17 +54,14 @@ class PlayerModel(
                         if (requested != null && requested.from == prior && requested.to == next)
                             requested.direction
                         else {
-                            val entries = player.queue.value.entries
-                            val before = entries.indexOfFirst { it.id == prior }
-                            val after = entries.indexOfFirst { it.id == next }
-                            when {
-                                before < 0 || after < 0 -> TrackMotion.REPLACE
-                                after == before + 1 -> TrackMotion.NEXT
-                                after == before - 1 -> TrackMotion.PREVIOUS
+                            when (next) {
+                                QueueOrder.next(motionQueue)?.id -> TrackMotion.NEXT
+                                QueueOrder.previous(motionQueue)?.id -> TrackMotion.PREVIOUS
                                 else -> TrackMotion.REPLACE
                             }
                         }
                     } else mutable.value.trackMotion
+                motionQueue = player.queue.value
                 val nextBinding =
                     LyricsBinding(snapshot.current?.id, snapshot.track?.id, snapshot.candidateId)
                 val changed = binding != nextBinding
@@ -89,6 +87,7 @@ class PlayerModel(
         }
         scope.launch {
             player.queue.collect { queue ->
+                if (queue.currentEntryId == mutable.value.snapshot.current?.id) motionQueue = queue
                 mutable.update { it.copy(queue = queue) }
                 if (queue.entries != lookupEntries) {
                     lookupEntries = queue.entries
@@ -195,6 +194,11 @@ class PlayerModel(
                 ?.let {
                     MotionRequest(player.snapshot.value.current?.id, it, direction)
                 }
+    }
+
+    fun toggleShuffle() = command {
+        player.dispatch(QueueCommand.ToggleShuffle)
+        AppResult.Success(Unit)
     }
 
     fun moveEntry(id: QueueEntryId, toIndex: Int) = command {

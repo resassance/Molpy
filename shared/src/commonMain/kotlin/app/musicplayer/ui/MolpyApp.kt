@@ -435,6 +435,19 @@ fun MolpyApp(
                                     },
                                     downloads.assets.any { it.trackId == value.id },
                                     { finish(overlay) },
+                                    onPlayNext = {
+                                        scope.launch {
+                                            if (
+                                                action {
+                                                    models.actions.enqueue(
+                                                        value,
+                                                        app.musicplayer.queue.QueueInsertion.NEXT,
+                                                    )
+                                                }
+                                            )
+                                                finish(overlay)
+                                        }
+                                    },
                                     onEditArtists =
                                         if (models.artistEditor == null) null
                                         else {

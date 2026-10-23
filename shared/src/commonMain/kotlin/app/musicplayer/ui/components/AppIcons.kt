@@ -12,6 +12,18 @@ object AppIcons {
         vector("Play", "M10 8.64L15.27 12 10 15.36V8.64M8 5v14l11-7L8 5z")
     }
     val Pause: ImageVector by lazy { vector("Pause", "M6 19h4V5H6v14zm8-14v14h4V5h-4z") }
+    val Shuffle: ImageVector by lazy {
+        vector(
+            "Shuffle",
+            "M10.59 9.17 5.41 4 4 5.41l5.17 5.18 1.42-1.42zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm0 16H20v-5.5l-2.04 2.04-3.13-3.13-1.42 1.42 3.13 3.13L14.5 20z",
+        )
+    }
+    val QueueNext: ImageVector by lazy {
+        vector(
+            "QueueNext",
+            "M3 5h18v2H3V5zm0 4h11v2H3V9zm0 4h11v2H3v-2zm13-3 6 4-6 4v-8zM3 17h11v2H3v-2z",
+        )
+    }
     val Next: ImageVector by lazy {
         vector("Next", "M6 18l8.5-6L6 6v12zm2-8.14L11.03 12 8 14.14V9.86zM16 6h2v12h-2z")
     }

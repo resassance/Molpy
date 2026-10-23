@@ -22,6 +22,7 @@ fun TrackMenu(
     onDownloads: () -> Unit,
     hasDownload: Boolean,
     onClose: () -> Unit,
+    onPlayNext: () -> Unit,
     onEditArtists: (() -> Unit)? = null,
 ) {
     ModalBottomSheet(
@@ -49,7 +50,8 @@ fun TrackMenu(
                 onFavorite,
             )
             onEditArtists?.let { MenuAction("Изменить исполнителей", AppIcons.Edit, it) }
-            MenuAction("Добавить в очередь", AppIcons.QueueAdd, onEnqueue)
+            MenuAction("Воспроизвести следующим", AppIcons.QueueNext, onPlayNext)
+            MenuAction("Добавить в конец очереди", AppIcons.QueueAdd, onEnqueue)
             MenuAction("Добавить в плейлист", AppIcons.PlaylistAdd, onPlaylist)
             if (hasDownload) MenuAction("Открыть загрузки", AppIcons.Download, onDownloads)
             else {

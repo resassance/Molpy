@@ -176,43 +176,63 @@ fun NowPlayingScreen(
                                         Modifier.fillMaxWidth(),
                                     )
                                 }
-                                Row(
-                                    Modifier.fillMaxWidth().padding(top = 12.dp),
-                                    horizontalArrangement = Arrangement.SpaceEvenly,
-                                    verticalAlignment = Alignment.CenterVertically,
+                                BoxWithConstraints(
+                                    Modifier.fillMaxWidth().height(84.dp).padding(top = 12.dp)
                                 ) {
-                                    IconButton(
-                                        model::previous,
-                                        Modifier.size(56.dp),
-                                        enabled =
-                                            queue.previous != null || state.snapshot.positionMs > 0,
+                                    val navigationSize = if (maxWidth < 280.dp) 48.dp else 56.dp
+                                    Row(
+                                        Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
                                     ) {
-                                        Icon(
-                                            AppIcons.Previous,
-                                            "Предыдущий трек",
-                                            Modifier.size(32.dp),
+                                        ShuffleButton(
+                                            state.queue.shuffleEnabled,
+                                            model::toggleShuffle,
                                         )
-                                    }
-                                    val active =
-                                        state.snapshot.status == PlayerStatus.PLAYING ||
-                                            state.snapshot.playWhenReady
-                                    FilledIconButton(
-                                        model::playPause,
-                                        Modifier.size(72.dp),
-                                        shape = CircleShape,
-                                    ) {
-                                        Icon(
-                                            if (active) AppIcons.Pause else AppIcons.Play,
-                                            if (active) "Пауза" else "Воспроизвести",
-                                            Modifier.size(36.dp),
-                                        )
-                                    }
-                                    IconButton(
-                                        model::next,
-                                        Modifier.size(56.dp),
-                                        enabled = queue.next != null,
-                                    ) {
-                                        Icon(AppIcons.Next, "Следующий трек", Modifier.size(32.dp))
+                                        Row(
+                                            Modifier.weight(1f),
+                                            horizontalArrangement = Arrangement.SpaceEvenly,
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            IconButton(
+                                                model::previous,
+                                                Modifier.size(navigationSize),
+                                                enabled =
+                                                    queue.previous != null ||
+                                                        state.snapshot.positionMs > 0,
+                                            ) {
+                                                Icon(
+                                                    AppIcons.Previous,
+                                                    "Предыдущий трек",
+                                                    Modifier.size(32.dp),
+                                                )
+                                            }
+                                            val active =
+                                                state.snapshot.status == PlayerStatus.PLAYING ||
+                                                    state.snapshot.playWhenReady
+                                            FilledIconButton(
+                                                model::playPause,
+                                                Modifier.size(72.dp),
+                                                shape = CircleShape,
+                                            ) {
+                                                Icon(
+                                                    if (active) AppIcons.Pause else AppIcons.Play,
+                                                    if (active) "Пауза" else "Воспроизвести",
+                                                    Modifier.size(36.dp),
+                                                )
+                                            }
+                                            IconButton(
+                                                model::next,
+                                                Modifier.size(navigationSize),
+                                                enabled = queue.next != null,
+                                            ) {
+                                                Icon(
+                                                    AppIcons.Next,
+                                                    "Следующий трек",
+                                                    Modifier.size(32.dp),
+                                                )
+                                            }
+                                        }
+                                        Spacer(Modifier.width(48.dp))
                                     }
                                 }
                                 Box(

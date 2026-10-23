@@ -13,6 +13,7 @@ import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.*
 import app.musicplayer.artwork.ArtworkLoader
 import app.musicplayer.model.*
+import app.musicplayer.queue.QueueOrder
 import app.musicplayer.ui.components.*
 import kotlin.math.roundToInt
 
@@ -47,6 +48,7 @@ fun QueueSheet(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+                ShuffleButton(state.queue.shuffleEnabled, model::toggleShuffle)
                 IconButton(onClose) { Icon(AppIcons.Close, "Закрыть очередь") }
             }
             LazyColumn(
@@ -91,7 +93,7 @@ fun QueueSheet(
                     val track = item.track
                     var horizontal by remember(item.entryId) { mutableFloatStateOf(0f) }
                     var vertical by remember(item.entryId) { mutableFloatStateOf(0f) }
-                    val globalIndex = state.queue.entries.indexOfFirst { it.id == item.entryId }
+                    val globalIndex = queue.upcoming.indexOfFirst { it.entryId == item.entryId }
                     Box(
                         Modifier.fillMaxWidth().pointerInput(item.entryId) {
                             detectHorizontalDragGestures(
@@ -120,17 +122,12 @@ fun QueueSheet(
                                     customActions =
                                         listOf(
                                             CustomAccessibilityAction("Выше") {
-                                                if (
-                                                    globalIndex >
-                                                        state.queue.entries.indexOfFirst {
-                                                            it.id == state.queue.currentEntryId
-                                                        } + 1
-                                                )
+                                                if (globalIndex > 0)
                                                     model.moveEntry(item.entryId, globalIndex - 1)
                                                 true
                                             },
                                             CustomAccessibilityAction("Ниже") {
-                                                if (globalIndex < state.queue.entries.lastIndex)
+                                                if (globalIndex < queue.upcoming.lastIndex)
                                                     model.moveEntry(item.entryId, globalIndex + 1)
                                                 true
                                             },
@@ -159,33 +156,20 @@ fun QueueSheet(
                                                 ) { change, amount ->
                                                     change.consume()
                                                     vertical += amount.y
-                                                    val index =
-                                                        latest.queue.entries.indexOfFirst {
-                                                            it.id == item.entryId
-                                                        }
+                                                    val upcoming = QueueOrder.upcoming(latest.queue)
+                                                    val index = upcoming.indexOfFirst {
+                                                        it.id == item.entryId
+                                                    }
+                                                    if (index < 0)
+                                                        return@detectDragGesturesAfterLongPress
                                                     val delta =
                                                         when {
                                                             vertical > rowHeight -> 1
                                                             vertical < -rowHeight -> -1
                                                             else -> 0
                                                         }
-                                                    val firstUpcoming =
-                                                        (latest.queue.entries.indexOfFirst {
-                                                                it.id == latest.queue.currentEntryId
-                                                            } + 1)
-                                                            .coerceAtLeast(0)
-                                                    if (
-                                                        index < firstUpcoming ||
-                                                            index < 0 ||
-                                                            firstUpcoming >
-                                                                latest.queue.entries.lastIndex
-                                                    )
-                                                        return@detectDragGesturesAfterLongPress
                                                     val target =
-                                                        (index + delta).coerceIn(
-                                                            firstUpcoming,
-                                                            latest.queue.entries.lastIndex,
-                                                        )
+                                                        (index + delta).coerceIn(upcoming.indices)
                                                     if (delta != 0 && target != index) {
                                                         model.moveEntry(item.entryId, target)
                                                         vertical = 0f
