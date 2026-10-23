@@ -1,0 +1,245 @@
+{
+  "header": {
+    "musicDetailHeaderRenderer": {
+      "title": {
+        "runs": [
+          {
+            "text": "Rock picks"
+          }
+        ]
+      },
+      "subtitle": {
+        "runs": [
+          {
+            "text": "Curator",
+            "navigationEndpoint": {
+              "browseEndpoint": {
+                "browseId": "UCowner"
+              }
+            }
+          }
+        ]
+      },
+      "thumbnail": {
+        "thumbnails": [
+          {
+            "url": "https://example.test/playlist-collage.jpg",
+            "width": 1000,
+            "height": 1000
+          }
+        ]
+      }
+    }
+  },
+  "contents": {
+    "sectionListRenderer": {
+      "contents": [
+        {
+          "musicPlaylistShelfRenderer": {
+            "contents": [
+              {
+                "musicResponsiveListItemRenderer": {
+                  "flexColumns": [
+                    {
+                      "musicResponsiveListItemFlexColumnRenderer": {
+                        "text": {
+                          "runs": [
+                            {
+                              "text": "Numb",
+                              "navigationEndpoint": {
+                                "watchEndpoint": {
+                                  "videoId": "song-one",
+                                  "watchEndpointMusicSupportedConfigs": {
+                                    "watchEndpointMusicConfig": {
+                                      "musicVideoType": "MUSIC_VIDEO_TYPE_ATV"
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "musicResponsiveListItemFlexColumnRenderer": {
+                        "text": {
+                          "runs": [
+                            {
+                              "text": "Linkin Park",
+                              "navigationEndpoint": {
+                                "browseEndpoint": {
+                                  "browseId": "artist-one",
+                                  "browseEndpointContextSupportedConfigs": {
+                                    "browseEndpointContextMusicConfig": {
+                                      "pageType": "MUSIC_PAGE_TYPE_ARTIST"
+                                    }
+                                  }
+                                }
+                              }
+                            },
+                            {
+                              "text": " • "
+                            },
+                            {
+                              "text": "Meteora",
+                              "navigationEndpoint": {
+                                "browseEndpoint": {
+                                  "browseId": "album-one",
+                                  "browseEndpointContextSupportedConfigs": {
+                                    "browseEndpointContextMusicConfig": {
+                                      "pageType": "MUSIC_PAGE_TYPE_ALBUM"
+                                    }
+                                  }
+                                }
+                              }
+                            },
+                            {
+                              "text": " • "
+                            },
+                            {
+                              "text": "3:07"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ],
+                  "playlistItemData": {
+                    "videoId": "song-one",
+                    "playlistSetVideoId": "entry-a"
+                  },
+                  "thumbnail": {
+                    "musicThumbnailRenderer": {
+                      "thumbnail": {
+                        "thumbnails": [
+                          {
+                            "url": "https://example.test/video-shaped.jpg",
+                            "width": 480,
+                            "height": 270
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "musicResponsiveListItemRenderer": {
+                  "musicItemRendererDisplayPolicy": "MUSIC_ITEM_RENDERER_DISPLAY_POLICY_GREY_OUT",
+                  "flexColumns": [
+                    {
+                      "musicResponsiveListItemFlexColumnRenderer": {
+                        "text": {
+                          "runs": [
+                            {
+                              "text": "Unavailable"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "musicResponsiveListItemRenderer": {
+                  "flexColumns": [
+                    {
+                      "musicResponsiveListItemFlexColumnRenderer": {
+                        "text": {
+                          "runs": [
+                            {
+                              "text": "Numb",
+                              "navigationEndpoint": {
+                                "watchEndpoint": {
+                                  "videoId": "song-one",
+                                  "watchEndpointMusicSupportedConfigs": {
+                                    "watchEndpointMusicConfig": {
+                                      "musicVideoType": "MUSIC_VIDEO_TYPE_ATV"
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "musicResponsiveListItemFlexColumnRenderer": {
+                        "text": {
+                          "runs": [
+                            {
+                              "text": "Linkin Park",
+                              "navigationEndpoint": {
+                                "browseEndpoint": {
+                                  "browseId": "artist-one",
+                                  "browseEndpointContextSupportedConfigs": {
+                                    "browseEndpointContextMusicConfig": {
+                                      "pageType": "MUSIC_PAGE_TYPE_ARTIST"
+                                    }
+                                  }
+                                }
+                              }
+                            },
+                            {
+                              "text": " • "
+                            },
+                            {
+                              "text": "Meteora",
+                              "navigationEndpoint": {
+                                "browseEndpoint": {
+                                  "browseId": "album-one",
+                                  "browseEndpointContextSupportedConfigs": {
+                                    "browseEndpointContextMusicConfig": {
+                                      "pageType": "MUSIC_PAGE_TYPE_ALBUM"
+                                    }
+                                  }
+                                }
+                              }
+                            },
+                            {
+                              "text": " • "
+                            },
+                            {
+                              "text": "3:07"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ],
+                  "playlistItemData": {
+                    "videoId": "song-one",
+                    "playlistSetVideoId": "entry-b"
+                  },
+                  "thumbnail": {
+                    "musicThumbnailRenderer": {
+                      "thumbnail": {
+                        "thumbnails": [
+                          {
+                            "url": "https://example.test/video-shaped.jpg",
+                            "width": 480,
+                            "height": 270
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            ],
+            "continuations": [
+              {
+                "nextContinuationData": {
+                  "continuation": "playlist-tail"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

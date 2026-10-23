@@ -18,6 +18,66 @@ class InnerTubeBrowseCatalog(
 ) : BrowseCatalog {
     private val mapper = BrowseMapper(identities, nowMs)
     private val cursors = BrowseCursorStore(generation)
+    private val playlists = PlaylistMapper(identities, nowMs)
+    private val playlistHeads = PlaylistPageCache<SourceRef, PublicPlaylistCatalog>()
+    private val playlistPages = PlaylistPageCache<CatalogCursor, CatalogPage<PlaylistOccurrence>>()
+
+    override suspend fun playlist(
+        ref: PublicPlaylistRef,
+        refresh: Boolean,
+    ): AppResult<PublicPlaylistCatalog> = operation {
+        val validated = source(ref.source, "playlist")
+        val id = validated.id.removePrefix("VL")
+        if (!isPublicPlaylistId(id))
+            throw AppFailureException(
+                AppError(ErrorCode.SOURCE_UNAVAILABLE, "catalog.playlist.source", false)
+            )
+        val source = SourceRef("youtube", "playlist", id)
+        playlistHeads.get(source, refresh) {
+            val request = BrowseRequest(browseId = "VL$id")
+            val mapped = playlists.playlist(body(request), ref.copy(source = source)).required()
+            PublicPlaylistCatalog(
+                mapped.card,
+                playlistPage(
+                    mapped.tracks,
+                    BrowseCursorContext(
+                        BrowseKind.PLAYLIST_ROWS,
+                        source,
+                        request,
+                        seenRequests = setOf(request),
+                    ),
+                ),
+            )
+        }
+    }
+
+    override suspend fun morePlaylist(
+        cursor: CatalogCursor
+    ): AppResult<CatalogPage<PlaylistOccurrence>> = operation {
+        val context = cursors.get(cursor, BrowseKind.PLAYLIST_ROWS)
+        playlistPages.get(cursor) {
+            val mapped = playlists.more(body(context.request), context.offset).required()
+            playlistPage(
+                mapped,
+                context.copy(seenRequests = context.seenRequests + context.request),
+            )
+        }
+    }
+
+    private fun playlistPage(
+        page: MappedCatalogPage<PlaylistOccurrence>,
+        context: BrowseCursorContext,
+    ): CatalogPage<PlaylistOccurrence> {
+        val empty = if (page.items.isEmpty()) context.emptyPages + 1 else 0
+        if (page.next != null && empty >= 3) schemaFailure()
+        return CatalogPage(
+            page.items,
+            next(
+                page.next,
+                context.copy(offset = context.offset + page.items.size, emptyPages = empty),
+            ),
+        )
+    }
 
     override suspend fun album(ref: AlbumRef): AppResult<AlbumCatalog> = operation {
         val source = source(ref.source, "album")

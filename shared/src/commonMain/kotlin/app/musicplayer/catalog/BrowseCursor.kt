@@ -6,6 +6,7 @@ import kotlin.uuid.Uuid
 internal enum class BrowseKind {
     TRACKS,
     ALBUMS,
+    PLAYLIST_ROWS,
 }
 
 internal data class BrowseCursorContext(
@@ -16,6 +17,8 @@ internal data class BrowseCursorContext(
     val artist: ArtistRef? = null,
     val seenRequests: Set<BrowseRequest> = emptySet(),
     val seenIds: Set<String> = emptySet(),
+    val offset: Int = 0,
+    val emptyPages: Int = 0,
 )
 
 internal class BrowseCursorStore(private val generation: Long) {

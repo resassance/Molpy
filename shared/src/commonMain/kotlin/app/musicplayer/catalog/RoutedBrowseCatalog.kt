@@ -15,6 +15,12 @@ class RoutedBrowseCatalog(
 
     override suspend fun moreAlbums(cursor: CatalogCursor) = routed { it.moreAlbums(cursor) }
 
+    override suspend fun playlist(ref: PublicPlaylistRef, refresh: Boolean) = routed {
+        it.playlist(ref, refresh)
+    }
+
+    override suspend fun morePlaylist(cursor: CatalogCursor) = routed { it.morePlaylist(cursor) }
+
     private suspend fun <T> routed(action: suspend (BrowseCatalog) -> AppResult<T>): AppResult<T> {
         val context = network()
         val provider = active()
