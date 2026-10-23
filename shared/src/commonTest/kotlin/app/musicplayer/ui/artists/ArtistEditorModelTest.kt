@@ -11,6 +11,33 @@ import kotlinx.coroutines.test.*
 @OptIn(ExperimentalCoroutinesApi::class)
 class ArtistEditorModelTest {
     @Test
+    fun repeatedCatalogProfileDoesNotDuplicateKnownOrNewChoice() = runTest {
+        val repo = ArtistModelRepository()
+        val source = SourceRef("youtube", "artist", "b")
+        val initial = repo.directory.value.valueOrNull()!!
+        repo.directory.value =
+            AppResult.Success(
+                initial.copy(
+                    profiles = initial.profiles + (repo.b to ArtistProfile(repo.b, "B", source)),
+                    aliases =
+                        initial.aliases +
+                            (ArtistAliasKey(ArtistResolver.sourceKey(source)) to repo.b),
+                )
+            )
+        val model = ArtistEditorModel(repo, ArtistModelSearch(), backgroundScope)
+        model.open(repo.track)
+        runCurrent()
+        model.add(ArtistChoice.Existing(repo.b))
+        model.add(ArtistChoice.Catalog(ArtistCatalogHit("B fresh", source, null)))
+        assertEquals(2, model.state.value.choices.size)
+        val unknown = ArtistCatalogHit("New", SourceRef("youtube", "artist", "new"), null)
+        model.add(ArtistChoice.Catalog(unknown))
+        model.add(ArtistChoice.Catalog(unknown.copy(name = "New fresh")))
+        assertEquals(3, model.state.value.choices.size)
+        model.close()
+    }
+
+    @Test
     fun networkChangeClearsSpinnerWithoutDiscardingDraft() = runTest {
         val repo = ArtistModelRepository()
         val search = ArtistModelSearch()

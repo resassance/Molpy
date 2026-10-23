@@ -26,6 +26,7 @@ class ArtistEditorModel(
     private val scope = CoroutineScope(ownerScope.coroutineContext + job)
     private val mutable = MutableStateFlow(ArtistEditorState())
     val state: StateFlow<ArtistEditorState> = mutable.asStateFlow()
+    private var identities = ArtistDirectory()
     private var generation = 0L
     private var queryGeneration = 0L
     private var request: Job? = null
@@ -41,7 +42,8 @@ class ArtistEditorModel(
                 val directory = repository.directory.first().required()
                 val presentation = ArtistResolver.present(track, directory)
                 ensureActive()
-                if (selected == generation)
+                if (selected == generation) {
+                    identities = directory
                     mutable.value =
                         ArtistEditorState(
                             track,
@@ -50,6 +52,7 @@ class ArtistEditorModel(
                             },
                             directory.overrides[track.id],
                         )
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -98,17 +101,40 @@ class ArtistEditorModel(
 
     fun select(index: Int, choice: ArtistChoice) = edit { choices ->
         if (index !in choices.indices) choices
-        else choices.toMutableList().apply { this[index] = choice }.distinct()
+        else choices.toMutableList().apply { this[index] = choice }
     }
 
-    fun add(choice: ArtistChoice) = edit { (it + choice).distinct() }
+    fun add(choice: ArtistChoice) = edit { it + choice }
 
     fun remove(index: Int) = edit { choices -> choices.filterIndexed { i, _ -> i != index } }
 
     private fun edit(action: (List<ArtistChoice>) -> List<ArtistChoice>) {
         if (state.value.saving || state.value.track == null) return
-        mutable.update { it.copy(choices = action(it.choices), error = null, saved = false) }
+        mutable.update {
+            it.copy(
+                choices = action(it.choices).distinctBy(::choiceKey),
+                error = null,
+                saved = false,
+            )
+        }
     }
+
+    private fun choiceKey(choice: ArtistChoice): Pair<String, String> =
+        when (choice) {
+            is ArtistChoice.Name -> "name" to choice.name
+            is ArtistChoice.Existing ->
+                "local" to
+                    (choice.id
+                            .takeIf { it in identities.profiles }
+                            ?.let { ArtistResolver.root(it, identities) } ?: choice.id)
+                        .value
+            is ArtistChoice.Catalog -> {
+                val source = choice.profile.source
+                val id = identities.aliases[ArtistAliasKey(ArtistResolver.sourceKey(source))]
+                if (id != null) "local" to ArtistResolver.root(id, identities).value
+                else "source" to ArtistResolver.sourceKey(source)
+            }
+        }
 
     fun save() = write(false)
 
@@ -186,6 +212,7 @@ class ArtistEditorModel(
     }
 
     fun closeDraft() {
+        identities = ArtistDirectory()
         generation++
         queryGeneration++
         request?.cancel()
