@@ -13,6 +13,12 @@ interface QueuePlaybackPort : PlaybackPort {
 
     suspend fun playList(tracks: List<Track>, startIndex: Int): AppResult<Unit>
 
+    suspend fun playPublicPlaylist(request: PlaylistPlaybackRequest): AppResult<Unit> =
+        AppResult.Failure(AppError(ErrorCode.SOURCE_UNAVAILABLE, "queue.source.unsupported", false))
+
+    suspend fun retryQueueSource(): AppResult<Unit> =
+        AppResult.Failure(AppError(ErrorCode.SOURCE_UNAVAILABLE, "queue.source.unsupported", false))
+
     val queue: StateFlow<QueueSnapshot>
 
     suspend fun dispatch(command: QueueCommand)

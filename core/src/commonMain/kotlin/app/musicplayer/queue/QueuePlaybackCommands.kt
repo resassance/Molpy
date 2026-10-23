@@ -19,6 +19,25 @@ class QueuePlaybackCommands(
     private var generation = 0L
     private val insertions = QueueInsertionGate()
 
+    suspend fun playSource(
+        track: Track,
+        entry: QueueEntry,
+        source: QueueSourceState,
+        isCurrent: () -> Boolean = { true },
+    ): AppResult<Unit> {
+        currentCoroutineContext().ensureActive()
+        if (!isCurrent()) throw CancellationException("Superseded playlist request")
+        invalidateQueue()
+        val selected = generation
+        val saved = remember(track)
+        checkCurrent(selected)
+        if (!isCurrent()) throw CancellationException("Superseded playlist request")
+        if (saved is AppResult.Failure) return saved
+        return queue.replace(listOf(entry), entry.id, source) {
+            selected == generation && isCurrent()
+        }
+    }
+
     suspend fun playList(tracks: List<Track>, startIndex: Int): AppResult<Unit> {
         if (startIndex !in tracks.indices)
             return AppResult.Failure(AppError(ErrorCode.INVALID_CONFIG, "queue.list", false))

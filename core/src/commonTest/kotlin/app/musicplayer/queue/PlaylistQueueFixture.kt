@@ -12,6 +12,7 @@ internal class PlaylistQueueFixture(scope: CoroutineScope) {
             .associate { TrackId(it) to Fixtures.track(it, sourceId = it) }
             .toMutableMap()
     var resolves = 0
+    var beforeResolve: suspend (PlaybackCandidate) -> Unit = {}
     val engine = Engine()
     val coordinator =
         PlaybackCoordinator(
@@ -23,6 +24,7 @@ internal class PlaylistQueueFixture(scope: CoroutineScope) {
                     network: NetworkContext,
                 ): AppResult<ResolvedPlayback> {
                     resolves++
+                    beforeResolve(candidate)
                     return AppResult.Success(
                         ResolvedPlayback(
                             candidate.id,

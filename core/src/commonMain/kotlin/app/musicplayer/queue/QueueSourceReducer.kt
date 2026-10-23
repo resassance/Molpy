@@ -19,6 +19,25 @@ internal object QueueSourceReducer {
             )
         }
         val source = q.source ?: return null
+        if (command is QueueCommand.SourceReady) {
+            if (
+                source.sessionId != command.sessionId ||
+                    source.phase in setOf(QueueSourcePhase.CHANGED, QueueSourcePhase.DETACHED)
+            )
+                return QueueTransition(q)
+            return QueueTransition(
+                q.copy(
+                    source =
+                        source.copy(
+                            error = null,
+                            phase =
+                                if (source.phase == QueueSourcePhase.FAILED)
+                                    QueueSourcePhase.LOADING
+                                else source.phase,
+                        )
+                )
+            )
+        }
         if (command is QueueCommand.SourceFailed) {
             if (source.sessionId != command.sessionId || source.phase == QueueSourcePhase.DETACHED)
                 return QueueTransition(q)
@@ -27,7 +46,8 @@ internal object QueueSourceReducer {
                     source =
                         source.copy(
                             phase =
-                                if (command.changed) QueueSourcePhase.CHANGED
+                                if (command.error.code == ErrorCode.DATABASE) source.phase
+                                else if (command.changed) QueueSourcePhase.CHANGED
                                 else QueueSourcePhase.FAILED,
                             error = command.error,
                         )

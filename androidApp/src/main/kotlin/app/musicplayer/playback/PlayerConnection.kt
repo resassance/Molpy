@@ -103,6 +103,13 @@ class PlayerConnection(private val application: MusicApplication) :
         return withHost { it.playList(tracks, startIndex) }
     }
 
+    override suspend fun playPublicPlaylist(request: PlaylistPlaybackRequest): AppResult<Unit> {
+        withContext(Dispatchers.Main.immediate) { insertions.invalidate() }
+        return withHost { it.playPublicPlaylist(request) }
+    }
+
+    override suspend fun retryQueueSource(): AppResult<Unit> = withHost { it.retryQueueSource() }
+
     override suspend fun enqueue(track: Track, position: QueueInsertion): AppResult<Unit> =
         withContext(Dispatchers.Main.immediate) {
             ++commandGeneration

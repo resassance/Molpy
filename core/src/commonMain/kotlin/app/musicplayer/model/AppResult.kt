@@ -21,7 +21,12 @@ fun <T> AppResult<T>.valueOrNull(): T? =
         is AppResult.Failure -> null
     }
 
-data class AppError(val code: ErrorCode, val operationId: String, val retryable: Boolean)
+data class AppError(
+    val code: ErrorCode,
+    val operationId: String,
+    val retryable: Boolean,
+    val retryAfterMs: Long? = null,
+)
 
 enum class ErrorCode {
     INVALID_CONFIG,

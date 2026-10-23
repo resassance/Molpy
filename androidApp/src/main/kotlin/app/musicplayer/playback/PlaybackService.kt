@@ -24,12 +24,7 @@ class PlaybackService : MediaSessionService() {
         val graph = (application as MusicApplication).graph
         runtime = graph.createPlayback(scope)
         val controller = runtime.queue
-        val commands =
-            QueuePlaybackCommands(
-                controller,
-                runtime.persistence::remember,
-                runtime.persistence::rememberAll,
-            )
+        val commands = runtime.commands
         scope.launch { runtime.coordinator.snapshot.collect { controller.onPlayback(it) } }
         host =
             object : QueuePlaybackPort {
@@ -55,6 +50,24 @@ class PlaybackService : MediaSessionService() {
                         .async {
                             runtime.startup.await()
                             commands.playList(tracks, startIndex)
+                        }
+                        .await()
+
+                override suspend fun playPublicPlaylist(
+                    request: PlaylistPlaybackRequest
+                ): AppResult<Unit> =
+                    scope
+                        .async {
+                            runtime.startup.await()
+                            runtime.playlistLoader.play(request)
+                        }
+                        .await()
+
+                override suspend fun retryQueueSource(): AppResult<Unit> =
+                    scope
+                        .async {
+                            runtime.startup.await()
+                            runtime.playlistLoader.retry()
                         }
                         .await()
 
@@ -84,6 +97,7 @@ class PlaybackService : MediaSessionService() {
                     commands.invalidatePending()
                     scope.launch {
                         runtime.startup.await()
+                        runtime.playlistLoader.resumeIfNeeded()
                         controller.play()
                     }
                 }
@@ -106,6 +120,7 @@ class PlaybackService : MediaSessionService() {
 
                 override fun stop() {
                     commands.invalidateQueue()
+                    runtime.playlistLoader.stop()
                     scope.launch {
                         runtime.startup.await()
                         runtime.persistence.stop()
@@ -143,6 +158,7 @@ class PlaybackService : MediaSessionService() {
     override fun onDestroy() {
         val graph = (application as MusicApplication).graph
         if (graph.playback.value === host) graph.playback.value = null
+        runtime.playlistLoader.close()
         runtime.listening.ownerStopped()
         scope.cancel()
         session?.release()

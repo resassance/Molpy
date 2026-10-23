@@ -252,6 +252,7 @@ class AppGraph(private val context: Context) {
             playbackPreferences,
             audioMetadataRecorder,
             artists,
+            browse,
         )
 }
 
@@ -271,6 +272,7 @@ internal class PlaybackRuntime(
     playbackPreferences: PlaybackPreferencesRepository? = null,
     private val audioMetadataRecorder: AudioMetadataRecorder? = null,
     artists: ArtistRepository? = null,
+    browse: BrowseCatalog,
 ) {
     private val local = OfflineMediaSource(downloads.cache)
     val engine =
@@ -366,6 +368,16 @@ internal class PlaybackRuntime(
             System::currentTimeMillis,
             diagnostics::record,
         )
+    val commands = QueuePlaybackCommands(queue, persistence::remember, persistence::rememberAll)
+    val playlistLoader =
+        QueuePlaylistLoader(
+            browse,
+            queue,
+            commands,
+            persistence::rememberAll,
+            persistence::commitSourcePage,
+            scope,
+        )
     val listening =
         ListeningTracker(
             listeningRepository,
@@ -382,7 +394,10 @@ internal class PlaybackRuntime(
                     withContext(Dispatchers.Main.immediate) {
                         reconnect?.cancel()
                         reconnect = null
-                        if (!closed && scope.isActive) coordinator.networkInvalidated()
+                        if (!closed && scope.isActive) {
+                            playlistLoader.networkInvalidated()
+                            coordinator.networkInvalidated()
+                        }
                         val warmup = extractionWarmup
                         warmup?.cancel()
                         extractionWarmup = null
@@ -396,7 +411,10 @@ internal class PlaybackRuntime(
                 withContext(Dispatchers.Main.immediate) {
                     if (closed || !scope.isActive) return@withContext
                     extraction = newExtraction()
-                    reconnect = scope.launch { coordinator.networkActivated() }
+                    reconnect = scope.launch {
+                        playlistLoader.networkActivated()
+                        coordinator.networkActivated()
+                    }
                 }
             }
         }
@@ -435,6 +453,7 @@ internal class PlaybackRuntime(
 
     suspend fun closeExtraction() {
         artistMetadata?.close()
+        playlistLoader.close()
         closed = true
         network.transport.removeListener(listener)
         val previous =

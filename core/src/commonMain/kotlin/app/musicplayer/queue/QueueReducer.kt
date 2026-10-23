@@ -25,6 +25,8 @@ sealed interface QueueCommand {
         val changed: Boolean = false,
     ) : QueueCommand
 
+    data class SourceReady(val sessionId: String) : QueueCommand
+
     data class Add(
         val entries: List<QueueEntry>,
         val position: QueueInsertion = QueueInsertion.END,
@@ -115,7 +117,8 @@ object QueueReducer {
         }
         return when (command) {
             is QueueCommand.AppendSourcePage,
-            is QueueCommand.SourceFailed -> QueueTransition(q)
+            is QueueCommand.SourceFailed,
+            is QueueCommand.SourceReady -> QueueTransition(q)
             is QueueCommand.SetShuffle -> shuffle(command.enabled)
             QueueCommand.ToggleShuffle -> shuffle(!q.shuffleEnabled)
             is QueueCommand.Replace -> {
