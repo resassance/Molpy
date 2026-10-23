@@ -31,6 +31,7 @@ class QueuePlaylistLoader(
         val sessionId: String,
         var seedTail: List<PlaylistOccurrence>,
         var cursor: CatalogCursor?,
+        var needsRecovery: Boolean = false,
     ) {
         var staged: StagedPage? = null
     }
@@ -119,20 +120,27 @@ class QueuePlaylistLoader(
             return AppResult.Failure(
                 source.error ?: AppError(ErrorCode.RESOURCE_CHANGED, "queue.source.changed", false)
             )
-        val current = runtime?.takeIf { it.sessionId == source.sessionId } ?: return unavailable()
+        if (!source.hasMore && source.error == null) return AppResult.Success(Unit)
+        val current = currentRuntime(source)
         enabled = true
         if (worker?.isActive == true) return AppResult.Success(Unit)
         return start(current).await()
     }
 
     fun resumeIfNeeded() {
-        if (closed || !ready) return
+        if (closed) return
         val source = queue.state.value.source ?: return
-        val current = runtime?.takeIf { it.sessionId == source.sessionId } ?: return
-        if (source.phase == QueueSourcePhase.CHANGED) return
+        if (source.phase in setOf(QueueSourcePhase.CHANGED, QueueSourcePhase.DETACHED)) return
+        if (!source.hasMore && runtime?.staged == null) return
         enabled = true
-        if (source.hasMore || current.staged != null) start(current)
+        if (ready) start(currentRuntime(source))
     }
+
+    private fun currentRuntime(source: QueueSourceState): SourceRuntime =
+        runtime?.takeIf { it.sessionId == source.sessionId }
+            ?: SourceRuntime(source.sessionId, emptyList(), null, needsRecovery = true).also {
+                runtime = it
+            }
 
     fun stop() {
         ++requestGeneration
@@ -202,7 +210,12 @@ class QueuePlaylistLoader(
     private suspend fun load(current: SourceRuntime, epoch: Long): AppResult<Unit> {
         guard(current, epoch)
         queue.dispatch(QueueCommand.SourceReady(current.sessionId))
-        while (true) {
+        if (current.needsRecovery) {
+            val recovered = recover(current, epoch)
+            if (recovered is AppResult.Failure) return recovered
+        }
+        var cursorRecovered = false
+        loadLoop@ while (true) {
             guard(current, epoch)
             val source = requireNotNull(queue.state.value.source)
             if (!source.hasMore && current.staged == null) return AppResult.Success(Unit)
@@ -219,8 +232,18 @@ class QueuePlaylistLoader(
                                         read(current, epoch, requireNotNull(current.cursor))
                                 ) {
                                     is AppResult.Success -> result.value
-                                    is AppResult.Failure ->
+                                    is AppResult.Failure -> {
+                                        if (
+                                            result.error.operationId == "catalog.cursor" &&
+                                                !cursorRecovered
+                                        ) {
+                                            cursorRecovered = true
+                                            val recovered = recover(current, epoch)
+                                            if (recovered is AppResult.Failure) return recovered
+                                            continue@loadLoop
+                                        }
                                         return fail(current, epoch, result.error)
+                                    }
                                 }
                             }
                         guard(current, epoch)
@@ -277,10 +300,50 @@ class QueuePlaylistLoader(
             guard(current, epoch)
             if (persisted is AppResult.Failure) return fail(current, epoch, persisted.error)
             current.staged = null
+            cursorRecovered = false
             current.seedTail = emptyList()
             current.cursor = stage.next
             if (stage.complete) return AppResult.Success(Unit)
         }
+    }
+
+    private suspend fun recover(current: SourceRuntime, epoch: Long): AppResult<Unit> {
+        guard(current, epoch)
+        val saved = requireNotNull(queue.state.value.source).acceptedRows.toList()
+        val head = catalog.playlist(requireNotNull(queue.state.value.source).ref, refresh = true)
+        guard(current, epoch)
+        var page =
+            when (head) {
+                is AppResult.Success -> head.value.tracks
+                is AppResult.Failure -> return fail(current, epoch, head.error)
+            }
+        val replay = mutableListOf<PlaylistOccurrence>()
+        val cursors = mutableSetOf<CatalogCursor>()
+        while (true) {
+            replay += page.items
+            if (replay.size >= saved.size) break
+            val next = page.next ?: return changed(current, epoch)
+            if (!cursors.add(next)) return changed(current, epoch)
+            page =
+                when (val result = read(current, epoch, next)) {
+                    is AppResult.Success -> result.value
+                    is AppResult.Failure -> return fail(current, epoch, result.error)
+                }
+        }
+        if (!PlaylistResumeVerifier.matches(saved, replay.take(saved.size).map { it.identity }))
+            return changed(current, epoch)
+        guard(current, epoch)
+        current.seedTail = replay.drop(saved.size)
+        current.cursor = page.next
+        current.needsRecovery = false
+        return AppResult.Success(Unit)
+    }
+
+    private suspend fun changed(current: SourceRuntime, epoch: Long): AppResult<Unit> {
+        guard(current, epoch)
+        val error = AppError(ErrorCode.RESOURCE_CHANGED, "queue.source.changed", false)
+        queue.dispatch(QueueCommand.SourceFailed(current.sessionId, error, changed = true))
+        return AppResult.Failure(error)
     }
 
     private suspend fun read(

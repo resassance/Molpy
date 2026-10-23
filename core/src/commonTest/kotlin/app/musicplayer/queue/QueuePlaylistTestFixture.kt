@@ -4,12 +4,14 @@ import app.musicplayer.catalog.*
 import app.musicplayer.fixtures.Fixtures
 import app.musicplayer.model.*
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ensureActive
 
 internal class QueuePlaylistTestFixture(scope: CoroutineScope) {
     val playback = PlaylistQueueFixture(scope).also { it.tracks.clear() }
     val ref = PublicPlaylistRef("Mix", SourceRef("youtube", "playlist", "PLtest"))
     var beforeRemember: suspend (List<Track>) -> Unit = {}
     var beforeRememberOne: suspend (Track) -> Unit = {}
+    var beforeCommit: suspend (QueueSnapshot) -> Unit = {}
     var commits = 0
     var failCommit = false
     var durable = QueueSnapshot()
@@ -30,6 +32,8 @@ internal class QueuePlaylistTestFixture(scope: CoroutineScope) {
             commands,
             ::remember,
             { snapshot, _ ->
+                beforeCommit(snapshot)
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
                 commits++
                 if (failCommit)
                     AppResult.Failure(AppError(ErrorCode.DATABASE, "library.save", false))
@@ -71,6 +75,20 @@ internal class QueuePlaylistTestFixture(scope: CoroutineScope) {
     fun future() = QueueOrder.upcoming(playback.queue.state.value).map { it.trackId.value }
 
     class Catalog : BrowseCatalog {
+        var headCalls = 0
+        var head: suspend (PublicPlaylistRef, Boolean) -> AppResult<PublicPlaylistCatalog> =
+            { _, _ ->
+                error("Unexpected head")
+            }
+
+        override suspend fun playlist(
+            ref: PublicPlaylistRef,
+            refresh: Boolean,
+        ): AppResult<PublicPlaylistCatalog> {
+            headCalls++
+            return head(ref, refresh)
+        }
+
         var calls = 0
         var read: suspend (CatalogCursor) -> AppResult<CatalogPage<PlaylistOccurrence>> = {
             error("Unexpected page")
