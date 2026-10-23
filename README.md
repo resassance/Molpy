@@ -11,10 +11,10 @@
   <a href="https://developer.android.com/media/media3"><img alt="Media3 1.11.1" src="https://img.shields.io/badge/Media3-1.11.1-00897B?style=for-the-badge&logo=android&logoColor=white"></a>
 </p>
 
-[![Prerelease](https://img.shields.io/badge/release-v0.1.0--alpha.11-D97706?style=flat-square)](https://github.com/resassance/Molpy/releases/tag/v0.1.0-alpha.11)
+[![Prerelease](https://img.shields.io/badge/release-v0.1.0--alpha.12-D97706?style=flat-square)](https://github.com/resassance/Molpy/releases/tag/v0.1.0-alpha.12)
 [![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0--only-546E7A?style=flat-square)](LICENSE)
 
-**[Скачать APK](https://github.com/resassance/Molpy/releases/download/v0.1.0-alpha.11/Molpy-v0.1.0-alpha.11-debug.apk)** · [Страница релиза](https://github.com/resassance/Molpy/releases/tag/v0.1.0-alpha.11) · [Сообщить об ошибке](https://github.com/resassance/Molpy/issues)
+**[Скачать APK](https://github.com/resassance/Molpy/releases/download/v0.1.0-alpha.12/Molpy-v0.1.0-alpha.12-debug.apk)** · [Страница релиза](https://github.com/resassance/Molpy/releases/tag/v0.1.0-alpha.12) · [Сообщить об ошибке](https://github.com/resassance/Molpy/issues)
 
 ## Содержание
 
@@ -39,7 +39,8 @@ Molpy строится вокруг музыкальной записи: наз�
 
 | Возможность | Что доступно |
 | --- | --- |
-| Поиск | Каталог YouTube Music, запасной поиск по YouTube, названия треков, исполнители, альбомы и обложки |
+| Поиск | Общая выдача и фильтры по трекам, артистам, альбомам и плейлистам; переходы к исполнителям и релизам; запасной поиск по YouTube |
+| Публичные плейлисты | Прослушивание с любой песни, фоновая догрузка оставшейся очереди и продолжение после перезапуска |
 | Плеер | Воспроизведение, пауза, перемотка, следующий и предыдущий трек, позиция, длительность и буфер загрузки |
 | Громкость | Выравнивание онлайн и офлайн по данным источника; отключается в настройках |
 | Очередь | Добавление следующим или в конец, перемешивание, ручная перестановка и возврат по истории переходов; сохранение между запусками |
@@ -54,7 +55,7 @@ Molpy строится вокруг музыкальной записи: наз�
 
 Правка исполнителей относится к одному треку. Объединение карточек — отдельное действие в меню артиста; его можно отменить.
 
-После перезапуска очередь восстанавливается на паузе. Для продолжения нажмите Play. Ошибки загрузки текстов и обложек не прерывают аудио.
+После перезапуска очередь восстанавливается на паузе. Для продолжения нажмите Play. В публичных плейлистах перемешивание включается после получения полного списка записей; текущая песня продолжает играть. Ошибки загрузки текстов и обложек не прерывают аудио.
 
 ## Ограничения и планы
 
@@ -69,7 +70,7 @@ Windows и Linux планируются после Android, web — позже. 
 
 **Требования:** Android 6.0 / API 23 или новее, 64-битное устройство `arm64-v8a` либо эмулятор/устройство `x86_64`. 32-битные ABI не включены в APK.
 
-1. Откройте [релиз v0.1.0-alpha.11](https://github.com/resassance/Molpy/releases/tag/v0.1.0-alpha.11) и скачайте `Molpy-v0.1.0-alpha.11-debug.apk`.
+1. Откройте [релиз v0.1.0-alpha.12](https://github.com/resassance/Molpy/releases/tag/v0.1.0-alpha.12) и скачайте `Molpy-v0.1.0-alpha.12-debug.apk`.
 2. Установите APK, разрешив установку из выбранного источника в настройках Android, если система запросит это.
 3. Если YouTube в вашей сети недоступен, включите системный VPN или задайте proxy в настройках сети Molpy.
 4. Найдите запись по исполнителю и названию и выберите её в результатах поиска.

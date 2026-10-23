@@ -11,10 +11,10 @@
   <a href="https://developer.android.com/media/media3"><img alt="Media3 1.11.1" src="https://img.shields.io/badge/Media3-1.11.1-00897B?style=for-the-badge&logo=android&logoColor=white"></a>
 </p>
 
-[![Prerelease](https://img.shields.io/badge/release-v0.1.0--alpha.11-D97706?style=flat-square)](https://github.com/resassance/Molpy/releases/tag/v0.1.0-alpha.11)
+[![Prerelease](https://img.shields.io/badge/release-v0.1.0--alpha.12-D97706?style=flat-square)](https://github.com/resassance/Molpy/releases/tag/v0.1.0-alpha.12)
 [![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0--only-546E7A?style=flat-square)](LICENSE)
 
-**[Download APK](https://github.com/resassance/Molpy/releases/download/v0.1.0-alpha.11/Molpy-v0.1.0-alpha.11-debug.apk)** · [Release page](https://github.com/resassance/Molpy/releases/tag/v0.1.0-alpha.11) · [Report an issue](https://github.com/resassance/Molpy/issues)
+**[Download APK](https://github.com/resassance/Molpy/releases/download/v0.1.0-alpha.12/Molpy-v0.1.0-alpha.12-debug.apk)** · [Release page](https://github.com/resassance/Molpy/releases/tag/v0.1.0-alpha.12) · [Report an issue](https://github.com/resassance/Molpy/issues)
 
 ## Contents
 
@@ -39,7 +39,8 @@ No Molpy account or dedicated backend is required. Google sign-in is not impleme
 
 | Capability | What is available |
 | --- | --- |
-| Search | YouTube Music catalog, YouTube search fallback, track titles, artists, albums, and artwork |
+| Search | Combined results and filters for tracks, artists, albums, and playlists; artist and album pages; YouTube search fallback |
+| Public playlists | Start from any track, load the remaining queue in the background, and continue after restarting |
 | Player | Play, pause, seek, next and previous track, position, duration, and playback buffer |
 | Volume | Source-based volume normalization for online and offline playback; can be disabled in settings |
 | Queue | Play next or add to the end, shuffle, reorder, and go back through playback history; keep the queue between launches |
@@ -54,7 +55,7 @@ No Molpy account or dedicated backend is required. Google sign-in is not impleme
 
 You can edit the artists for one track from its menu. To combine duplicate artist profiles, use the artist menu; merges can be undone.
 
-After restarting the app, the queue is restored on pause. Press Play to continue. Lyrics and artwork loading errors do not interrupt audio.
+After restarting the app, the queue is restored on pause. Press Play to continue. In public playlists, shuffle becomes active once the full track list has loaded; the current song keeps playing. Lyrics and artwork loading errors do not interrupt audio.
 
 ## Limitations and roadmap
 
@@ -69,7 +70,7 @@ Windows and Linux are planned after Android, followed by web. Accounts, cloud sy
 
 **Requirements:** Android 6.0 / API 23 or later, on a 64-bit `arm64-v8a` device or `x86_64` emulator/device. The APK does not include 32-bit ABIs.
 
-1. Open [release v0.1.0-alpha.11](https://github.com/resassance/Molpy/releases/tag/v0.1.0-alpha.11) and download `Molpy-v0.1.0-alpha.11-debug.apk`.
+1. Open [release v0.1.0-alpha.12](https://github.com/resassance/Molpy/releases/tag/v0.1.0-alpha.12) and download `Molpy-v0.1.0-alpha.12-debug.apk`.
 2. Install the APK, allowing installation from your chosen source in Android settings if prompted.
 3. If YouTube is unavailable on your network, enable a system VPN or configure a proxy in Molpy’s network settings.
 4. Search by artist and title and select a recording from the results.
