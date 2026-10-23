@@ -8,7 +8,10 @@ import app.musicplayer.downloads.*
 import app.musicplayer.library.CacheRetention
 import app.musicplayer.library.LibraryRepository
 import app.musicplayer.model.*
+import app.musicplayer.queue.QueueOrder
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -75,40 +78,45 @@ class RoomLibraryRepository(private val database: MusicDatabase, private val now
         }
 
     override suspend fun saveQueue(snapshot: QueueSnapshot) {
+        require(snapshot.entries.map { it.id }.toSet().size == snapshot.entries.size) {
+            "Duplicate queue entry IDs"
+        }
+        require(snapshot.traversal == null || QueueOrder.isValid(snapshot)) {
+            "Invalid queue traversal"
+        }
+        val q = QueueOrder.normalized(snapshot)
+        val payload = QueueRecordMapper.encode(q)
+        val caller = currentCoroutineContext()
+        caller.ensureActive()
         write {
-            require(snapshot.entries.map { it.id }.toSet().size == snapshot.entries.size) {
-                "Duplicate queue entry IDs"
-            }
+            caller.ensureActive()
             dao.deleteQueueEntries()
             dao.insertQueueEntries(
-                snapshot.entries.mapIndexed { index, entry ->
+                q.entries.mapIndexed { index, entry ->
                     QueueEntryRecord(entry.id.value, entry.trackId.value, index)
                 }
             )
             dao.putQueueSnapshot(
                 QueueSnapshotRecord(
-                    currentEntryId = snapshot.currentEntryId?.value,
-                    positionMs = snapshot.positionMs.coerceAtLeast(0),
-                    playWhenReady = snapshot.playWhenReady,
+                    currentEntryId = q.currentEntryId?.value,
+                    positionMs = q.positionMs.coerceAtLeast(0),
+                    playWhenReady = q.playWhenReady,
+                    shuffleEnabled = q.shuffleEnabled,
+                    traversalJson = payload,
                 )
             )
+            caller.ensureActive()
         }
     }
 
     override suspend fun restoreQueue(): QueueSnapshot = read {
         val saved = dao.queueSnapshot() ?: return@read QueueSnapshot()
         val entries =
-            dao.queueEntries()
-                .filter { dao.track(it.trackId) != null }
-                .map { QueueEntry(QueueEntryId(it.entryId), TrackId(it.trackId)) }
-        if (entries.isEmpty()) return@read QueueSnapshot()
-        val current = entries.firstOrNull { it.id.value == saved.currentEntryId }
-        QueueSnapshot(
-            entries,
-            (current ?: entries.first()).id,
-            if (current == null) 0 else saved.positionMs.coerceAtLeast(0),
-            false,
-        )
+            dao.queueEntries().map { QueueEntry(QueueEntryId(it.entryId), TrackId(it.trackId)) }
+        val restored = QueueRecordMapper.restore(entries, saved)
+        val available =
+            entries.map { it.trackId }.distinct().filter { dao.track(it.value) != null }.toSet()
+        QueueRecordMapper.prune(restored, available)
     }
 
     /**

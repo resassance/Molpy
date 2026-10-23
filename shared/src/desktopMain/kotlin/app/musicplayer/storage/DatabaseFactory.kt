@@ -7,6 +7,6 @@ import kotlinx.coroutines.Dispatchers
 fun createMusicDatabase(path: String): MusicDatabase =
     Room.databaseBuilder<MusicDatabase>(path)
         .setDriver(BundledSQLiteDriver())
-        .addMigrations(Migration1To2, Migration2To3, Migration3To4, Migration4To5)
+        .addMigrations(Migration1To2, Migration2To3, Migration3To4, Migration4To5, Migration5To6)
         .setQueryCoroutineContext(Dispatchers.IO)
         .build()

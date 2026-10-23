@@ -2,17 +2,20 @@ package app.musicplayer.playback
 
 import app.musicplayer.library.LibraryRepository
 import app.musicplayer.model.*
+import kotlin.test.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.test.*
-import kotlin.test.*
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class SnapshotPersistenceTest {
     private val entry = QueueEntry(QueueEntryId("entry"), TrackId("track"))
-    private fun snapshot(position: Long = 0, play: Boolean = true) = QueueSnapshot(listOf(entry), entry.id, position, play)
 
-    @Test fun savesInitialSnapshotThenLatestActualProgressAt5000Not4999() = runTest {
+    private fun snapshot(position: Long = 0, play: Boolean = true) =
+        QueueSnapshot(listOf(entry), entry.id, position, play)
+
+    @Test
+    fun savesInitialSnapshotThenLatestActualProgressAt5000Not4999() = runTest {
         val repository = QueueRepository()
         val queue = MutableStateFlow(snapshot(12_000))
         val persistence = SnapshotPersistence(repository, { testScheduler.currentTime }, { true })
@@ -30,11 +33,13 @@ class SnapshotPersistenceTest {
         assertEquals(listOf(snapshot(12_000), snapshot(16_999)), repository.saves)
     }
 
-    @Test fun intentWithoutActualPlaybackDoesNotPeriodicallySaveProgress() = runTest {
+    @Test
+    fun intentWithoutActualPlaybackDoesNotPeriodicallySaveProgress() = runTest {
         val repository = QueueRepository()
         var actualPlaying = false
         val queue = MutableStateFlow(snapshot())
-        val persistence = SnapshotPersistence(repository, { testScheduler.currentTime }, { actualPlaying })
+        val persistence =
+            SnapshotPersistence(repository, { testScheduler.currentTime }, { actualPlaying })
         backgroundScope.launch { persistence.start(queue) }
         runCurrent()
         queue.value = snapshot(100)
@@ -48,11 +53,13 @@ class SnapshotPersistenceTest {
         assertEquals(snapshot(100), repository.saves.last())
     }
 
-    @Test fun pauseSeekTrackAndQueueTransitionsSaveImmediatelyWithoutPeriodicPausedWrites() = runTest {
+    @Test
+    fun pauseSeekTrackAndQueueTransitionsSaveImmediatelyWithoutPeriodicPausedWrites() = runTest {
         val repository = QueueRepository()
         val queue = MutableStateFlow(snapshot(1000))
         var playing = true
-        val persistence = SnapshotPersistence(repository, { testScheduler.currentTime }, { playing })
+        val persistence =
+            SnapshotPersistence(repository, { testScheduler.currentTime }, { playing })
         backgroundScope.launch { persistence.start(queue) }
         runCurrent()
         advanceTimeBy(100)
@@ -76,7 +83,8 @@ class SnapshotPersistenceTest {
         assertEquals(savedCount, repository.saves.size)
     }
 
-    @Test fun initialPausedStateIsSavedAndExplicitFlushWinsOverOlderPendingProgress() = runTest {
+    @Test
+    fun initialPausedStateIsSavedAndExplicitFlushWinsOverOlderPendingProgress() = runTest {
         val repository = QueueRepository()
         val queue = MutableStateFlow(snapshot(40_000, false))
         val persistence = SnapshotPersistence(repository, { testScheduler.currentTime }, { true })
@@ -95,7 +103,8 @@ class SnapshotPersistenceTest {
         assertEquals(1, repository.saves.count { it == latest })
     }
 
-    @Test fun flushSerializesWithInFlightSaveAndRetainsLatestPositionAndIntent() = runTest {
+    @Test
+    fun flushSerializesWithInFlightSaveAndRetainsLatestPositionAndIntent() = runTest {
         val repository = QueueRepository()
         val queue = MutableStateFlow(snapshot())
         val persistence = SnapshotPersistence(repository, { testScheduler.currentTime }, { true })
@@ -115,29 +124,83 @@ class SnapshotPersistenceTest {
         assertEquals(1, repository.maximumConcurrentSaves)
     }
 
+    @Test
+    fun shuffleAndTraversalChangesSaveImmediatelyEvenWithoutOrderChange() = runTest {
+        val repository = QueueRepository()
+        val queue = MutableStateFlow(snapshot().copy(traversal = QueueTraversal()))
+        val persistence = SnapshotPersistence(repository, { testScheduler.currentTime }, { true })
+        backgroundScope.launch { persistence.start(queue) }
+        runCurrent()
+        queue.value = queue.value.copy(shuffleEnabled = true)
+        runCurrent()
+        assertEquals(2, repository.saves.size)
+        assertTrue(repository.saves.last().shuffleEnabled)
+        queue.value = queue.value.copy(traversal = QueueTraversal(history = listOf(entry.id)))
+        runCurrent()
+        assertEquals(3, repository.saves.size)
+    }
+
     private class QueueRepository : LibraryRepository {
         val saves = mutableListOf<QueueSnapshot>()
         var beforeSave: suspend () -> Unit = {}
         private var concurrentSaves = 0
         var maximumConcurrentSaves = 0
+
         override suspend fun saveQueue(snapshot: QueueSnapshot) {
             concurrentSaves++
             maximumConcurrentSaves = maxOf(maximumConcurrentSaves, concurrentSaves)
-            try { beforeSave(); saves += snapshot } finally { concurrentSaves-- }
+            try {
+                beforeSave()
+                saves += snapshot
+            } finally {
+                concurrentSaves--
+            }
         }
+
         override suspend fun restoreQueue() = saves.lastOrNull() ?: QueueSnapshot()
+
         override suspend fun getOrCreate(source: SourceRef): TrackId = error("Unused")
+
         override suspend fun upsert(track: Track): Unit = error("Unused")
+
         override suspend fun getTrack(id: TrackId): Track? = error("Unused")
+
         override suspend fun setFavorite(id: TrackId, favorite: Boolean): Unit = error("Unused")
+
         override suspend fun recordStarted(id: TrackId, atMs: Long): Unit = error("Unused")
-        override suspend fun getCachedSearch(query: String, musicOnly: Boolean, nowMs: Long): List<Track>? = error("Unused")
-        override suspend fun cacheSearch(query: String, musicOnly: Boolean, tracks: List<Track>, atMs: Long): Unit = error("Unused")
+
+        override suspend fun getCachedSearch(
+            query: String,
+            musicOnly: Boolean,
+            nowMs: Long,
+        ): List<Track>? = error("Unused")
+
+        override suspend fun cacheSearch(
+            query: String,
+            musicOnly: Boolean,
+            tracks: List<Track>,
+            atMs: Long,
+        ): Unit = error("Unused")
+
         override suspend fun prune(nowMs: Long): Unit = error("Unused")
+
         override suspend fun getNetworkConfig(): NetworkConfig = error("Unused")
+
         override suspend fun saveNetworkConfig(config: NetworkConfig): Unit = error("Unused")
-        override suspend fun getLyrics(id: TrackId, candidateId: CandidateId, nowMs: Long): LyricsLookup? = error("Unused")
-        override suspend fun saveLyrics(id: TrackId, candidateId: CandidateId, lookup: LyricsLookup, atMs: Long): Unit = error("Unused")
+
+        override suspend fun getLyrics(
+            id: TrackId,
+            candidateId: CandidateId,
+            nowMs: Long,
+        ): LyricsLookup? = error("Unused")
+
+        override suspend fun saveLyrics(
+            id: TrackId,
+            candidateId: CandidateId,
+            lookup: LyricsLookup,
+            atMs: Long,
+        ): Unit = error("Unused")
+
         override val favorites: Flow<List<Track>> = emptyFlow()
         override val recent: Flow<List<Track>> = emptyFlow()
     }

@@ -24,7 +24,9 @@ class SnapshotPersistence(
     private var savedAtMs: Long? = null
     private var failedAtMs: Long? = null
 
-    /** Collect after restoration. Handled storage failures stay dirty and retry even while paused. */
+    /**
+     * Collect after restoration. Handled storage failures stay dirty and retry even while paused.
+     */
     suspend fun start(queue: StateFlow<QueueSnapshot>): Unit = coroutineScope {
         val periodic = launch {
             while (true) {
@@ -36,7 +38,11 @@ class SnapshotPersistence(
                 mutex.withLock {
                     latest?.let { current ->
                         val retryDue = retryRemaining()?.let { it <= 0 } == true
-                        val progressDue = current != saved && current.playWhenReady && actualPlaying() && elapsedSinceSave() >= INTERVAL_MS
+                        val progressDue =
+                            current != saved &&
+                                current.playWhenReady &&
+                                actualPlaying() &&
+                                elapsedSinceSave() >= INTERVAL_MS
                         if (retryDue || (failedAtMs == null && progressDue)) save(current)
                     }
                 }
@@ -45,14 +51,27 @@ class SnapshotPersistence(
         try {
             queue.collect { snapshot ->
                 mutex.withLock {
-                    val current = snapshot.copy(entries = snapshot.entries.toList())
+                    val current = frozen(snapshot)
                     latest = current
                     val previous = saved
-                    val transition = previous == null || current.entries != previous.entries ||
-                        current.currentEntryId != previous.currentEntryId || current.playWhenReady != previous.playWhenReady
-                    val progressDue = current.playWhenReady && actualPlaying() && elapsedSinceSave() >= INTERVAL_MS
+                    val transition =
+                        previous == null ||
+                            current.entries != previous.entries ||
+                            current.currentEntryId != previous.currentEntryId ||
+                            current.playWhenReady != previous.playWhenReady ||
+                            current.shuffleEnabled != previous.shuffleEnabled ||
+                            current.traversal != previous.traversal
+                    val progressDue =
+                        current.playWhenReady &&
+                            actualPlaying() &&
+                            elapsedSinceSave() >= INTERVAL_MS
                     val retryAllowed = retryRemaining()?.let { it <= 0 } ?: true
-                    if (current != previous && retryAllowed && (transition || !current.playWhenReady || progressDue)) save(current)
+                    if (
+                        current != previous &&
+                            retryAllowed &&
+                            (transition || !current.playWhenReady || progressDue)
+                    )
+                        save(current)
                 }
             }
         } finally {
@@ -60,19 +79,39 @@ class SnapshotPersistence(
         }
     }
 
-    /** Explicit lifecycle/command checkpoint; serialized after any in-flight save, without throttling. */
+    /**
+     * Explicit lifecycle/command checkpoint; serialized after any in-flight save, without
+     * throttling.
+     */
     suspend fun flush(snapshot: QueueSnapshot) {
         mutex.withLock {
-            val current = snapshot.copy(entries = snapshot.entries.toList())
+            val current = frozen(snapshot)
             latest = current
             save(current)
         }
     }
 
     private fun elapsedSinceSave(): Long = savedAtMs?.let { (clock() - it).coerceAtLeast(0) } ?: 0
-    private fun retryRemaining(): Long? = failedAtMs?.let { INTERVAL_MS - (clock() - it).coerceAtLeast(0) }
 
-    // Default callers retain exception propagation. The service opts into safe normalized reporting.
+    private fun frozen(snapshot: QueueSnapshot) =
+        snapshot.copy(
+            entries = snapshot.entries.toList(),
+            traversal =
+                snapshot.traversal?.let {
+                    it.copy(
+                        history = it.history.toList(),
+                        upcoming = it.upcoming.toList(),
+                        priority = it.priority.toList(),
+                    )
+                },
+        )
+
+    private fun retryRemaining(): Long? = failedAtMs?.let {
+        INTERVAL_MS - (clock() - it).coerceAtLeast(0)
+    }
+
+    // Default callers retain exception propagation. The service opts into safe normalized
+    // reporting.
     private suspend fun save(snapshot: QueueSnapshot) {
         try {
             repository.saveQueue(snapshot)
@@ -90,5 +129,7 @@ class SnapshotPersistence(
         onSaved()
     }
 
-    private companion object { const val INTERVAL_MS = 5000L }
+    private companion object {
+        const val INTERVAL_MS = 5000L
+    }
 }

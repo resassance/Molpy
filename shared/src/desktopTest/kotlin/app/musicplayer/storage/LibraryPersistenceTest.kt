@@ -262,7 +262,10 @@ class LibraryPersistenceTest {
                 )
                 assertEquals(listOf(a), library.repository.favorites.first())
                 assertEquals(listOf(b), library.repository.recent.first())
-                assertEquals(queue, library.repository.restoreQueue())
+                assertEquals(
+                    app.musicplayer.queue.QueueOrder.normalized(queue),
+                    library.repository.restoreQueue(),
+                )
             } finally {
                 library.close()
             }
@@ -423,15 +426,23 @@ class LibraryPersistenceTest {
                 )
                 library.reopen()
                 assertEquals(
-                    QueueSnapshot(listOf(known), known.id, 0, false),
+                    app.musicplayer.queue.QueueOrder.normalized(
+                        QueueSnapshot(listOf(known), known.id, 0, false)
+                    ),
                     library.repository.restoreQueue(),
                 )
                 library.repository.saveQueue(QueueSnapshot(listOf(missing), missing.id, -20, true))
-                assertEquals(QueueSnapshot(), library.repository.restoreQueue())
+                assertEquals(
+                    app.musicplayer.queue.QueueOrder.normalized(QueueSnapshot()),
+                    library.repository.restoreQueue(),
+                )
                 library.repository.saveQueue(QueueSnapshot(listOf(known), known.id, -20, true))
                 assertEquals(0L, library.repository.restoreQueue().positionMs)
                 library.repository.saveQueue(QueueSnapshot())
-                assertEquals(QueueSnapshot(), library.repository.restoreQueue())
+                assertEquals(
+                    app.musicplayer.queue.QueueOrder.normalized(QueueSnapshot()),
+                    library.repository.restoreQueue(),
+                )
             } finally {
                 library.close()
             }
@@ -453,7 +464,10 @@ class LibraryPersistenceTest {
                         QueueSnapshot(listOf(entry, entry), entry.id, 1, true)
                     )
                 }
-                assertEquals(original, library.repository.restoreQueue())
+                assertEquals(
+                    app.musicplayer.queue.QueueOrder.normalized(original),
+                    library.repository.restoreQueue(),
+                )
             } finally {
                 library.close()
             }

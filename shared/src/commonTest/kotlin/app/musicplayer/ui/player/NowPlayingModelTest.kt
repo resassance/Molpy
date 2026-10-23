@@ -115,7 +115,10 @@ class NowPlayingModelTest {
         assertTrue(port.snapshot.value.playWhenReady)
         model.moveEntry(second.id, 0)
         runCurrent()
-        assertEquals(second.id, port.queue.value.entries.first().id)
+        assertEquals(
+            second.id,
+            app.musicplayer.queue.QueueOrder.upcoming(port.queue.value).first().id,
+        )
         model.removeEntry(first.id)
         runCurrent()
         assertEquals(listOf(second), port.queue.value.entries)
