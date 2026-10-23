@@ -25,6 +25,11 @@ interface LibraryRepository : IdentityStore, LyricsCache {
 
     suspend fun saveQueue(snapshot: QueueSnapshot)
 
+    suspend fun saveQueue(snapshot: QueueSnapshot, tracks: List<Track>) {
+        check(tracks.isEmpty()) { "Atomic queue metadata writes are unsupported" }
+        saveQueue(snapshot)
+    }
+
     suspend fun restoreQueue(): QueueSnapshot
 
     suspend fun recordStarted(id: TrackId, atMs: Long)

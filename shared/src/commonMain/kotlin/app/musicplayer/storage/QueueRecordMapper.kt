@@ -28,12 +28,16 @@ internal object QueueRecordMapper {
     }
 
     fun restore(entries: List<QueueEntry>, saved: QueueSnapshotRecord): QueueSnapshot {
+        val source = QueueSourceRecordMapper.decode(saved.sourceJson)
         val base =
             QueueSnapshot(
                 entries,
                 saved.currentEntryId?.let(::QueueEntryId),
                 saved.positionMs.coerceAtLeast(0),
                 false,
+                source = source.source,
+                revision = saved.revision.coerceAtLeast(0),
+                sourceRecoveryError = source.error,
             )
         val order =
             saved.traversalJson?.let { raw ->
@@ -60,10 +64,14 @@ internal object QueueRecordMapper {
         val ids = entries.map { it.id }.toSet()
         val order = snapshot.traversal!!
         val pending = order.upcoming.filter { it in ids }
+        val source =
+            snapshot.source?.let {
+                it.copy(deferredEndIds = it.deferredEndIds.filter { id -> id in pending })
+            }
         val current =
             snapshot.currentEntryId?.takeIf { it in ids }
-                ?: pending.firstOrNull()
-                ?: entries.firstOrNull()?.id
+                ?: if (source?.hasMore == true) pending.firstOrNull { it !in source.deferredEndIds }
+                else pending.firstOrNull() ?: entries.firstOrNull()?.id
         val upcoming = pending.filterNot { it == current }
         return snapshot.copy(
             entries = entries,
@@ -75,6 +83,11 @@ internal object QueueRecordMapper {
                     order.history.filter { it in ids },
                     upcoming,
                     order.priority.filter { it in upcoming },
+                ),
+            source =
+                source?.copy(
+                    deferredEndIds = source.deferredEndIds.filter { it in upcoming },
+                    waiting = if (source.hasMore && current == null) true else source.waiting,
                 ),
         )
     }

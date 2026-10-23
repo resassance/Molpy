@@ -109,6 +109,8 @@ data class QueueSnapshotRecord(
     val playWhenReady: Boolean,
     @ColumnInfo(defaultValue = "0") val shuffleEnabled: Boolean = false,
     val traversalJson: String? = null,
+    val sourceJson: String? = null,
+    @ColumnInfo(defaultValue = "0") val revision: Long = 0,
 )
 
 @Entity(tableName = "lyrics_cache", primaryKeys = ["trackId", "candidateId"])

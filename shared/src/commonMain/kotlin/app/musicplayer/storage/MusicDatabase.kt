@@ -28,7 +28,7 @@ import androidx.room.*
             ArtistMergeRecord::class,
             SessionArtistRecord::class,
         ],
-    version = 6,
+    version = 7,
     exportSchema = true,
 )
 @ConstructedBy(MusicDatabaseConstructor::class)

@@ -3,6 +3,7 @@ package app.musicplayer.queue
 import app.musicplayer.catalog.*
 import app.musicplayer.model.*
 import kotlin.test.*
+import kotlinx.coroutines.*
 import kotlinx.coroutines.test.*
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
@@ -95,5 +96,72 @@ class QueueSourceControllerTest {
         f.queue.restore(saved)
         assertTrue(a > 0 && b > a && c > b && f.queue.state.value.revision > c)
         assertFalse(f.queue.state.value.playWhenReady)
+    }
+
+    @Test
+    fun restoreKeepsNullCurrentAtUnknownBoundary() = runTest {
+        val f = PlaylistQueueFixture(backgroundScope)
+        val tail = f.entry("tail")
+        val source =
+            QueueSourceState(
+                "s",
+                PublicPlaylistRef("Mix", SourceRef("youtube", "playlist", "PLtest")),
+                0,
+                listOf(identity(0, "a")),
+                deferredEndIds = listOf(tail.id),
+                waiting = true,
+            )
+        f.queue.restore(
+            QueueSnapshot(
+                listOf(tail),
+                null,
+                traversal = QueueTraversal(upcoming = listOf(tail.id)),
+                source = source,
+            )
+        )
+        assertNull(f.queue.state.value.currentEntryId)
+        assertNull(f.queue.snapshot.value.current)
+        assertEquals(listOf(tail.id), f.queue.state.value.traversal!!.upcoming)
+    }
+
+    @Test
+    fun slowRestoreMetadataDoesNotBlockQueueCommands() = runTest {
+        val f = PlaylistQueueFixture(backgroundScope)
+        val gate = CompletableDeferred<Unit>()
+        val queue =
+            QueueController(f.engine, f.coordinator) { id ->
+                gate.await()
+                f.tracks[id]
+            }
+        val restore = launch {
+            queue.restore(QueueSnapshot(listOf(f.entry("a")), QueueEntryId("a")))
+        }
+        runCurrent()
+        val add = launch { queue.dispatch(QueueCommand.Add(listOf(f.entry("b")))) }
+        runCurrent()
+        assertTrue(add.isCompleted)
+        gate.complete(Unit)
+        restore.join()
+        add.join()
+        assertEquals(listOf("a", "b"), queue.state.value.entries.map { it.id.value })
+    }
+
+    @Test
+    fun slowStopCheckpointDoesNotBlockQueueCommandsOrStopANewerPlay() = runTest {
+        val f = PlaylistQueueFixture(backgroundScope)
+        f.start()
+        runCurrent()
+        val gate = CompletableDeferred<Unit>()
+        val stopped = launch { f.queue.stop { gate.await() } }
+        runCurrent()
+        val adding = launch { f.queue.dispatch(QueueCommand.Add(listOf(f.entry("b")))) }
+        runCurrent()
+        assertTrue(adding.isCompleted)
+        f.queue.play()
+        runCurrent()
+        gate.complete(Unit)
+        stopped.join()
+        assertTrue(f.queue.state.value.playWhenReady)
+        assertEquals("a", f.engine.snapshot.value.current!!.id.value)
     }
 }

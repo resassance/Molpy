@@ -177,16 +177,16 @@ class QueueListPlaybackTest {
     }
 
     @Test
-    fun invalidationWhileWaitingForQueueLockIsCheckedBeforeReplace() = runTest {
-        lockInvalidation { it.playList(listOf(b), 0) }
+    fun replacementDuringSlowRestoreKeepsNewSelection() = runTest {
+        selectionDuringRestore { it.playList(listOf(b), 0) }
     }
 
     @Test
-    fun invalidationWhileWaitingForQueueLockIsCheckedBeforeSingleSelection() = runTest {
-        lockInvalidation { it.select(b, QueueEntry(QueueEntryId("new-b"), b.id), 0, true) }
+    fun singleSelectionDuringSlowRestoreKeepsNewSelection() = runTest {
+        selectionDuringRestore { it.select(b, QueueEntry(QueueEntryId("new-b"), b.id), 0, true) }
     }
 
-    private suspend fun TestScope.lockInvalidation(
+    private suspend fun TestScope.selectionDuringRestore(
         command: suspend (QueuePlaybackCommands) -> AppResult<Unit>
     ) {
         val engine = Engine()
@@ -198,7 +198,17 @@ class QueueListPlaybackTest {
                     candidate: PlaybackCandidate,
                     capabilities: PlaybackCapabilities,
                     network: NetworkContext,
-                ): AppResult<ResolvedPlayback> = error("Unexpected resolution")
+                ): AppResult<ResolvedPlayback> =
+                    AppResult.Success(
+                        ResolvedPlayback(
+                            candidate.id,
+                            Representation("wav", "audio/wav", "pcm", null, 10000, null),
+                            TransportKind.PROGRESSIVE,
+                            MediaRequest("https://example.invalid/audio", emptyMap()),
+                            null,
+                            network.generation,
+                        )
+                    )
             }
         val coordinator = PlaybackCoordinator(engine, resolver, { network }, backgroundScope)
         val queue =
@@ -220,8 +230,31 @@ class QueueListPlaybackTest {
         restore.join()
         pending.join()
         runCurrent()
-        assertEquals(listOf(old), queue.state.value.entries)
-        assertFalse(queue.state.value.playWhenReady)
+        assertEquals(b.id, queue.snapshot.value.track!!.id)
+        assertEquals(
+            b.id,
+            queue.state.value.entries.first { it.id == queue.state.value.currentEntryId }.trackId,
+        )
+        assertTrue(queue.state.value.playWhenReady)
+        assertEquals(1, engine.loads)
+    }
+
+    @Test
+    fun staleAdmissionCannotMutateQueue() = runTest {
+        val engine = Engine()
+        val tracks = mutableMapOf(a.id to a, b.id to b)
+        val queue = queue(backgroundScope, engine, tracks)
+        val current = QueueEntry(QueueEntryId("a-current"), a.id)
+        queue.restore(QueueSnapshot(listOf(current), current.id))
+        val before = queue.state.value
+        val replacement = QueueEntry(QueueEntryId("b-new"), b.id)
+        assertFailsWith<CancellationException> {
+            queue.replace(listOf(replacement), replacement.id, isCurrent = { false })
+        }
+        assertFailsWith<CancellationException> {
+            queue.select(replacement, 0, true, isCurrent = { false })
+        }
+        assertEquals(before, queue.state.value)
         assertEquals(0, engine.loads)
     }
 

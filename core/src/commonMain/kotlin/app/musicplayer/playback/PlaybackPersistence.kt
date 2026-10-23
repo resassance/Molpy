@@ -68,6 +68,9 @@ class PlaybackPersistence(
         if (storage("metadata") { repository.upsertAll(tracks) }) AppResult.Success(Unit)
         else AppResult.Failure(requireNotNull(error.value))
 
+    suspend fun commitSourcePage(snapshot: QueueSnapshot, tracks: List<Track>): AppResult<Unit> =
+        persistence.commitSourcePage(snapshot, tracks)
+
     suspend fun checkpoint() {
         if (restored) persistence.flush(queue.state.value)
     }

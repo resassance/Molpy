@@ -79,7 +79,7 @@ class QueueMigrationTest {
             BundledSQLiteDriver().open(path).use { connection ->
                 connection.prepare("PRAGMA user_version").use {
                     it.step()
-                    assertEquals(6L, it.getLong(0))
+                    assertEquals(7L, it.getLong(0))
                 }
                 connection.prepare("SELECT name FROM artists WHERE id='artist'").use {
                     assertTrue(it.step())

@@ -196,7 +196,7 @@ class ArtistMigrationTest {
                     }
                 connection.prepare("PRAGMA user_version").use {
                     assertTrue(it.step())
-                    assertEquals(6L, it.getLong(0))
+                    assertEquals(7L, it.getLong(0))
                 }
             }
         } finally {

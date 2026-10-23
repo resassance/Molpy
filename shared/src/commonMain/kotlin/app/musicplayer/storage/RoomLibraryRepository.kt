@@ -77,34 +77,48 @@ class RoomLibraryRepository(private val database: MusicDatabase, private val now
             read { records.mapNotNull { trackRecords.load(TrackId(it.id)) } }
         }
 
-    override suspend fun saveQueue(snapshot: QueueSnapshot) {
+    override suspend fun saveQueue(snapshot: QueueSnapshot) = saveQueue(snapshot, emptyList())
+
+    override suspend fun saveQueue(snapshot: QueueSnapshot, tracks: List<Track>) {
         require(snapshot.entries.map { it.id }.toSet().size == snapshot.entries.size) {
             "Duplicate queue entry IDs"
         }
         require(snapshot.traversal == null || QueueOrder.isValid(snapshot)) {
             "Invalid queue traversal"
         }
+        require(snapshot.revision >= 0) { "Invalid queue revision" }
         val q = QueueOrder.normalized(snapshot)
-        val payload = QueueRecordMapper.encode(q)
+        val record =
+            QueueSnapshotRecord(
+                currentEntryId = q.currentEntryId?.value,
+                positionMs = q.positionMs.coerceAtLeast(0),
+                playWhenReady = q.playWhenReady,
+                shuffleEnabled = q.shuffleEnabled,
+                traversalJson = QueueRecordMapper.encode(q),
+                sourceJson = QueueSourceRecordMapper.encode(q.source, q.sourceRecoveryError),
+                revision = q.revision,
+            )
+        val entries =
+            q.entries.mapIndexed { index, entry ->
+                QueueEntryRecord(entry.id.value, entry.trackId.value, index)
+            }
         val caller = currentCoroutineContext()
         caller.ensureActive()
         write {
             caller.ensureActive()
-            dao.deleteQueueEntries()
-            dao.insertQueueEntries(
-                q.entries.mapIndexed { index, entry ->
-                    QueueEntryRecord(entry.id.value, entry.trackId.value, index)
+            val previous = dao.queueSnapshot()
+            if (previous != null && previous.revision > q.revision) return@write
+            if (previous != null && previous.revision == q.revision)
+                require(previous == record && dao.queueEntries() == entries) {
+                    "Conflicting queue revision"
                 }
-            )
-            dao.putQueueSnapshot(
-                QueueSnapshotRecord(
-                    currentEntryId = q.currentEntryId?.value,
-                    positionMs = q.positionMs.coerceAtLeast(0),
-                    playWhenReady = q.playWhenReady,
-                    shuffleEnabled = q.shuffleEnabled,
-                    traversalJson = payload,
-                )
-            )
+            if (tracks.isNotEmpty()) {
+                val atMs = nowMs()
+                tracks.forEach { trackRecords.upsert(it, atMs) }
+            }
+            dao.deleteQueueEntries()
+            dao.insertQueueEntries(entries)
+            dao.putQueueSnapshot(record)
             caller.ensureActive()
         }
     }

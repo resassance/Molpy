@@ -147,7 +147,11 @@ class QueueStorageTest {
             }
             assertFails {
                 library.repository.saveQueue(
-                    QueueSnapshot(listOf(QueueEntry(QueueEntryId("b"), b.id)), QueueEntryId("b"))
+                    QueueSnapshot(
+                        listOf(QueueEntry(QueueEntryId("b"), b.id)),
+                        QueueEntryId("b"),
+                        revision = 1,
+                    )
                 )
             }
             library.db.useWriterConnection { c ->

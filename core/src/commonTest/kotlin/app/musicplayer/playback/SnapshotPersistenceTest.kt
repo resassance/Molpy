@@ -1,5 +1,6 @@
 package app.musicplayer.playback
 
+import app.musicplayer.catalog.*
 import app.musicplayer.library.LibraryRepository
 import app.musicplayer.model.*
 import kotlin.test.*
@@ -159,6 +160,9 @@ class SnapshotPersistenceTest {
 
         override suspend fun restoreQueue() = saves.lastOrNull() ?: QueueSnapshot()
 
+        override suspend fun saveQueue(snapshot: QueueSnapshot, tracks: List<Track>) =
+            saveQueue(snapshot)
+
         override suspend fun getOrCreate(source: SourceRef): TrackId = error("Unused")
 
         override suspend fun upsert(track: Track): Unit = error("Unused")
@@ -203,5 +207,65 @@ class SnapshotPersistenceTest {
 
         override val favorites: Flow<List<Track>> = emptyFlow()
         override val recent: Flow<List<Track>> = emptyFlow()
+    }
+
+    private fun source(rows: Int) =
+        QueueSourceState(
+            "s",
+            PublicPlaylistRef("Mix", SourceRef("youtube", "playlist", "PLtest")),
+            0,
+            (0 until rows).map {
+                PlaylistRowIdentity(it, "row-$it", SourceRef("youtube", "video", "song-$it"))
+            },
+        )
+
+    @Test
+    fun olderFlushCannotOverwriteNewerSourceCheckpoint() = runTest {
+        val repository = QueueRepository()
+        val old = snapshot(play = false).copy(source = source(1), revision = 1)
+        val queue = MutableStateFlow(old)
+        val persistence = SnapshotPersistence(repository, { testScheduler.currentTime }, { false })
+        backgroundScope.launch { persistence.start(queue) }
+        runCurrent()
+        queue.value = old.copy(source = source(2), revision = 2)
+        assertIs<AppResult.Success<Unit>>(persistence.commitSourcePage(queue.value, emptyList()))
+        persistence.flush(old)
+        assertEquals(2, repository.saves.last().source!!.acceptedRows.size)
+        assertEquals(2L, repository.saves.last().revision)
+    }
+
+    @Test
+    fun failedSourceSaveIsNotAcknowledged() = runTest {
+        val repository = QueueRepository()
+        val queue = MutableStateFlow(snapshot(play = false).copy(source = source(1), revision = 1))
+        val persistence =
+            SnapshotPersistence(
+                repository,
+                { testScheduler.currentTime },
+                { false },
+                onSaveError = {},
+            )
+        backgroundScope.launch { persistence.start(queue) }
+        runCurrent()
+        queue.value = queue.value.copy(source = source(2), revision = 2)
+        repository.beforeSave = { error("disk unavailable") }
+        val result = persistence.commitSourcePage(queue.value, emptyList())
+        assertEquals(ErrorCode.DATABASE, result.errorOrNull()!!.code)
+        assertEquals(1, repository.saves.last().source!!.acceptedRows.size)
+    }
+
+    @Test
+    fun checkpointOnlyChangesSaveImmediatelyAndFreezeSourceLists() = runTest {
+        val repository = QueueRepository()
+        val queue = MutableStateFlow(snapshot(play = false).copy(source = source(1), revision = 1))
+        val persistence = SnapshotPersistence(repository, { testScheduler.currentTime }, { false })
+        backgroundScope.launch { persistence.start(queue) }
+        runCurrent()
+        val rows = source(2).acceptedRows.toMutableList()
+        queue.value = queue.value.copy(source = source(2).copy(acceptedRows = rows), revision = 2)
+        runCurrent()
+        assertEquals(2, repository.saves.size)
+        rows.clear()
+        assertEquals(2, repository.saves.last().source!!.acceptedRows.size)
     }
 }

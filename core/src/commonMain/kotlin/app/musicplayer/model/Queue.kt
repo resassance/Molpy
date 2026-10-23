@@ -18,4 +18,5 @@ data class QueueSnapshot(
     val traversal: QueueTraversal? = null,
     val source: QueueSourceState? = null,
     val revision: Long = 0,
+    val sourceRecoveryError: AppError? = null,
 )

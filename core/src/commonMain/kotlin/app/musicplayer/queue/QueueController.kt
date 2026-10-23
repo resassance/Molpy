@@ -45,37 +45,50 @@ class QueueController(
     /**
      * Install durable metadata while paused. No resolver or engine load runs before explicit Play.
      */
-    suspend fun restore(snapshot: QueueSnapshot) = mutex.withLock {
-        cancelSelection()
-        coordinator.stop()
-        val entries = snapshot.entries.distinctBy { it.id }.toList()
-        val current =
-            entries.firstOrNull { it.id == snapshot.currentEntryId } ?: entries.firstOrNull()
-        val position =
-            if (current?.id == snapshot.currentEntryId) snapshot.positionMs.coerceAtLeast(0) else 0
-        publish(
-            QueueOrder.normalized(
-                snapshot.copy(
-                    entries = entries,
-                    currentEntryId = current?.id,
-                    positionMs = position,
-                    playWhenReady = false,
+    suspend fun restore(snapshot: QueueSnapshot) {
+        val pending =
+            mutex.withLock {
+                cancelSelection()
+                coordinator.stop()
+                val entries = snapshot.entries.distinctBy { it.id }.toList()
+                val current =
+                    entries.firstOrNull { it.id == snapshot.currentEntryId }
+                        ?: if (snapshot.source?.waiting == true) null else entries.firstOrNull()
+                val position =
+                    if (current?.id == snapshot.currentEntryId) snapshot.positionMs.coerceAtLeast(0)
+                    else 0
+                publish(
+                    QueueOrder.normalized(
+                        snapshot.copy(
+                            entries = entries,
+                            currentEntryId = current?.id,
+                            positionMs = position,
+                            playWhenReady = false,
+                        )
+                    ),
+                    force = true,
                 )
-            ),
-            force = true,
-        )
-        val track = current?.let { lookup(it.trackId) }
-        mutableSnapshot.value =
-            if (current == null) PlaybackSnapshot()
-            else
-                PlaybackSnapshot(
-                    PlayerStatus.PAUSED,
-                    current,
-                    track,
-                    position,
-                    playWhenReady = false,
-                )
-        restoredPosition = current != null
+                mutableSnapshot.value =
+                    if (current == null) PlaybackSnapshot()
+                    else
+                        PlaybackSnapshot(
+                            PlayerStatus.PAUSED,
+                            current,
+                            positionMs = position,
+                            playWhenReady = false,
+                        )
+                restoredPosition = current != null
+                current?.let { it to generation }
+            } ?: return
+        val track = lookup(pending.first.trackId)
+        mutex.withLock {
+            if (
+                generation != pending.second ||
+                    mutableState.value.currentEntryId != pending.first.id
+            )
+                return@withLock
+            mutableSnapshot.value = mutableSnapshot.value.copy(track = track)
+        }
     }
 
     suspend fun dispatch(command: QueueCommand, isCurrent: () -> Boolean = { true }) {
@@ -348,17 +361,21 @@ class QueueController(
         mutableSnapshot.value = mutableSnapshot.value.copy(positionMs = clamped)
     }
 
-    /** The explicit stop checkpoint is serialized before state clearing and later user commands. */
-    suspend fun stop(checkpoint: suspend (QueueSnapshot) -> Unit = {}) = mutex.withLock {
-        coordinator.pause()
-        publish(mutableState.value.copy(playWhenReady = false))
-        mutableSnapshot.value = mutableSnapshot.value.copy(playWhenReady = false)
-        checkpoint(mutableState.value)
-        restoredPosition = false
-        cancelSelection()
-        coordinator.stop()
-        publish(mutableState.value.copy(playWhenReady = false))
-        mutableSnapshot.value = PlaybackSnapshot()
+    suspend fun stop(checkpoint: suspend (QueueSnapshot) -> Unit = {}) {
+        val pending = mutex.withLock {
+            coordinator.pause()
+            publish(mutableState.value.copy(playWhenReady = false))
+            mutableSnapshot.value = mutableSnapshot.value.copy(playWhenReady = false)
+            mutableState.value to generation
+        }
+        checkpoint(pending.first)
+        mutex.withLock {
+            if (generation != pending.second || mutableState.value.playWhenReady) return@withLock
+            restoredPosition = false
+            cancelSelection()
+            coordinator.stop()
+            mutableSnapshot.value = PlaybackSnapshot()
+        }
     }
 
     private fun cancelSelection() {

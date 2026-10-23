@@ -431,16 +431,20 @@ class LibraryPersistenceTest {
                     ),
                     library.repository.restoreQueue(),
                 )
-                library.repository.saveQueue(QueueSnapshot(listOf(missing), missing.id, -20, true))
+                library.repository.saveQueue(
+                    QueueSnapshot(listOf(missing), missing.id, -20, true, revision = 1)
+                )
                 assertEquals(
-                    app.musicplayer.queue.QueueOrder.normalized(QueueSnapshot()),
+                    app.musicplayer.queue.QueueOrder.normalized(QueueSnapshot(revision = 1)),
                     library.repository.restoreQueue(),
                 )
-                library.repository.saveQueue(QueueSnapshot(listOf(known), known.id, -20, true))
+                library.repository.saveQueue(
+                    QueueSnapshot(listOf(known), known.id, -20, true, revision = 2)
+                )
                 assertEquals(0L, library.repository.restoreQueue().positionMs)
-                library.repository.saveQueue(QueueSnapshot())
+                library.repository.saveQueue(QueueSnapshot(revision = 3))
                 assertEquals(
-                    app.musicplayer.queue.QueueOrder.normalized(QueueSnapshot()),
+                    app.musicplayer.queue.QueueOrder.normalized(QueueSnapshot(revision = 3)),
                     library.repository.restoreQueue(),
                 )
             } finally {
