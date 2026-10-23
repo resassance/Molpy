@@ -184,10 +184,7 @@ fun NowPlayingScreen(
                                         Modifier.fillMaxWidth(),
                                         verticalAlignment = Alignment.CenterVertically,
                                     ) {
-                                        ShuffleButton(
-                                            state.queue.shuffleEnabled,
-                                            model::toggleShuffle,
-                                        )
+                                        QueueShuffleButton(state.queue, model::toggleShuffle)
                                         Row(
                                             Modifier.weight(1f),
                                             horizontalArrangement = Arrangement.SpaceEvenly,
@@ -223,7 +220,7 @@ fun NowPlayingScreen(
                                             IconButton(
                                                 model::next,
                                                 Modifier.size(navigationSize),
-                                                enabled = queue.next != null,
+                                                enabled = queue.canRequestNext,
                                             ) {
                                                 Icon(
                                                     AppIcons.Next,
@@ -241,6 +238,7 @@ fun NowPlayingScreen(
                                     contentAlignment = Alignment.CenterStart,
                                 ) {
                                     val error = state.snapshot.error ?: state.commandError
+                                    val gap = queue.gap
                                     when {
                                         error != null ->
                                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -252,8 +250,21 @@ fun NowPlayingScreen(
                                                     maxLines = 2,
                                                     overflow = TextOverflow.Ellipsis,
                                                 )
-                                                if (error.retryable)
-                                                    TextButton(model::retry) { Text("Повторить") }
+                                                if (
+                                                    error.retryable ||
+                                                        (state.snapshot.error == null &&
+                                                            queue.sourceCanRetry)
+                                                )
+                                                    TextButton(
+                                                        if (
+                                                            state.snapshot.error == null &&
+                                                                queue.sourceCanRetry
+                                                        )
+                                                            model::retryQueueSource
+                                                        else model::retry
+                                                    ) {
+                                                        Text("Повторить")
+                                                    }
                                             }
                                         state.snapshot.status == PlayerStatus.RESOLVING ->
                                             Text(
@@ -264,6 +275,61 @@ fun NowPlayingScreen(
                                         state.snapshot.status == PlayerStatus.BUFFERING ->
                                             Text(
                                                 "Загружаем аудио…",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = colors.onSurfaceVariant,
+                                            )
+                                        gap != null &&
+                                            (gap.waiting ||
+                                                gap.error != null ||
+                                                gap.phase != QueueSourcePhase.LOADING) -> {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text(
+                                                    queueSourceMessage(gap),
+                                                    Modifier.weight(1f).semantics {
+                                                        liveRegion = LiveRegionMode.Polite
+                                                    },
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = colors.onSurfaceVariant,
+                                                    maxLines = 2,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                )
+                                                if (gap.canRetry)
+                                                    TextButton(model::retryQueueSource) {
+                                                        Text("Повторить")
+                                                    }
+                                            }
+                                        }
+                                        queue.sourceError != null ->
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text(
+                                                    present(queue.sourceError).message,
+                                                    Modifier.weight(1f).semantics {
+                                                        liveRegion = LiveRegionMode.Polite
+                                                    },
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = colors.onSurfaceVariant,
+                                                    maxLines = 2,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                )
+                                                if (queue.sourceCanRetry)
+                                                    TextButton(model::retryQueueSource) {
+                                                        Text("Повторить")
+                                                    }
+                                            }
+                                        queue.sourceRecoveryError != null ->
+                                            Text(
+                                                present(queue.sourceRecoveryError).message,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = colors.onSurfaceVariant,
+                                                maxLines = 2,
+                                                overflow = TextOverflow.Ellipsis,
+                                            )
+                                        queue.shufflePending ->
+                                            Text(
+                                                "Подготавливаем перемешивание",
+                                                Modifier.semantics {
+                                                    liveRegion = LiveRegionMode.Polite
+                                                },
                                                 style = MaterialTheme.typography.bodySmall,
                                                 color = colors.onSurfaceVariant,
                                             )

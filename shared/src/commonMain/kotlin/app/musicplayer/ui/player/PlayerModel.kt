@@ -164,6 +164,8 @@ class PlayerModel(
 
     fun retryMetadata() = lookupTracks()
 
+    fun retryQueueSource() = command { player.retryQueueSource() }
+
     fun retry() {
         val snapshot = state.value.snapshot
         val track = state.value.currentTrack
@@ -201,9 +203,12 @@ class PlayerModel(
         AppResult.Success(Unit)
     }
 
-    fun moveEntry(id: QueueEntryId, toIndex: Int) = command {
-        player.dispatch(QueueCommand.MoveUpcoming(id, toIndex))
-        AppResult.Success(Unit)
+    fun moveEntry(id: QueueEntryId, toIndex: Int) {
+        if (!canMoveQueueEntry(player.queue.value, id, toIndex)) return
+        command {
+            player.dispatch(QueueCommand.MoveUpcoming(id, toIndex))
+            AppResult.Success(Unit)
+        }
     }
 
     fun removeEntry(id: QueueEntryId) = command {

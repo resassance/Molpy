@@ -1,6 +1,7 @@
 package app.musicplayer.ui.navigation
 
 import app.musicplayer.artists.ArtistId
+import app.musicplayer.catalog.PublicPlaylistRef
 import app.musicplayer.collections.PlaylistId
 import app.musicplayer.model.*
 import kotlinx.coroutines.flow.*
@@ -20,6 +21,8 @@ sealed interface AppRoute {
     data object Playlists : AppRoute
 
     data class Playlist(val id: PlaylistId) : AppRoute
+
+    data class PublicPlaylist(val ref: PublicPlaylistRef) : AppRoute
 
     data object Albums : AppRoute
 
@@ -173,6 +176,8 @@ class AppNavigation(initial: NavigationState = NavigationState()) {
                     AppRoute.Favorites -> listOf("favorites")
                     AppRoute.Playlists -> listOf("playlists")
                     is AppRoute.Playlist -> listOf("playlist", route.id.value)
+                    is AppRoute.PublicPlaylist ->
+                        entity("publicPlaylist", route.ref.title, route.ref.source, null)
                     AppRoute.Albums -> listOf("albums")
                     AppRoute.Artists -> listOf("artists")
                     is AppRoute.Album ->
@@ -188,20 +193,26 @@ class AppNavigation(initial: NavigationState = NavigationState()) {
         }
 
         private fun decode(element: JsonElement): AppRoute {
-            val f = element.jsonArray.map { it.jsonPrimitive.content }
+            val f = element.jsonArray.map { it.jsonPrimitive.contentOrNull.orEmpty() }
             fun source() = if (f[2].isEmpty()) null else SourceRef(f[2], f[3], f[4])
             return when (f[0]) {
                 "root" -> AppRoute.Root(AppTab.valueOf(f[1]))
                 "favorites" -> AppRoute.Favorites
                 "playlists" -> AppRoute.Playlists
                 "playlist" -> AppRoute.Playlist(PlaylistId(f[1]))
+                "publicPlaylist" ->
+                    AppRoute.PublicPlaylist(PublicPlaylistRef(f[1], requireNotNull(source())))
                 "albums" -> AppRoute.Albums
                 "artists" -> AppRoute.Artists
-                "album" -> AppRoute.Album(AlbumRef(f[1], source()), f[5].ifEmpty { null })
+                "album" ->
+                    AppRoute.Album(
+                        AlbumRef(f[1], source()),
+                        f.getOrNull(5)?.takeIf { it.isNotEmpty() },
+                    )
                 "artist" ->
                     AppRoute.Artist(
                         ArtistRef(f[1], source()),
-                        f[5].ifEmpty { null },
+                        f.getOrNull(5)?.takeIf { it.isNotEmpty() },
                         f.getOrNull(6)?.takeIf { it.isNotEmpty() }?.let(::ArtistId),
                     )
                 "downloads" -> AppRoute.Downloads

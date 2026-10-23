@@ -1,9 +1,46 @@
 package app.musicplayer.ui.navigation
 
+import app.musicplayer.catalog.PublicPlaylistRef
 import app.musicplayer.collections.PlaylistId
+import app.musicplayer.model.*
 import kotlin.test.*
 
 class AppNavigationTest {
+    @Test
+    fun playlistAndLocalPlaylistRoutesStayDistinct() {
+        val nav = AppNavigation()
+        val ref =
+            PublicPlaylistRef(
+                "Same / title \"name\"",
+                SourceRef("youtube-music", "playlist", "same/name"),
+            )
+        val local = AppRoute.Playlist(PlaylistId("same/name"))
+        nav.push(local)
+        nav.push(AppRoute.PublicPlaylist(ref))
+        val restored = AppNavigation.restore(nav.save())
+        assertEquals(AppRoute.PublicPlaylist(ref), restored.state.value.current)
+        assertTrue(restored.back())
+        assertEquals(local, restored.state.value.current)
+        nav.select(AppTab.LIBRARY)
+        assertEquals(AppRoute.Root(AppTab.LIBRARY), nav.state.value.current)
+    }
+
+    @Test
+    fun legacyEntityRoutesAcceptNullAndMissingOptionalFields() {
+        val restored =
+            AppNavigation.restore(
+                listOf(
+                    "LIBRARY",
+                    "[[\"root\",\"LIBRARY\"],[\"album\",\"Local\",null,null,null,null],[\"artist\",\"Artist\",\"\",\"\",\"\"]]",
+                    "[[\"root\",\"SEARCH\"]]",
+                    "[[\"root\",\"PROFILE\"]]",
+                )
+            )
+        assertEquals(AppRoute.Artist(ArtistRef("Artist", null)), restored.state.value.current)
+        restored.back()
+        assertEquals(AppRoute.Album(AlbumRef("Local", null)), restored.state.value.current)
+    }
+
     @Test
     fun reselectingActiveTabReturnsToRootAndPreservesOtherStacks() {
         val nav = AppNavigation()

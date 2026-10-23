@@ -1,5 +1,6 @@
 package app.musicplayer.ui.player
 
+import app.musicplayer.catalog.PublicPlaylistRef
 import app.musicplayer.lyrics.*
 import app.musicplayer.model.*
 import app.musicplayer.ui.*
@@ -9,6 +10,75 @@ import kotlinx.coroutines.test.*
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class PlayerModelTest {
+    @Test
+    fun retryQueueSourceUsesServiceAndReportsFailureWithoutSelectingAudio() = runTest {
+        val error = AppError(ErrorCode.SOURCE_UNAVAILABLE, "queue.page", true)
+        var retries = 0
+        val port =
+            object : EngineeringPort() {
+                override suspend fun retryQueueSource(): AppResult<Unit> {
+                    retries++
+                    return AppResult.Failure(error)
+                }
+            }
+        val model =
+            PlayerModel(
+                port,
+                EngineeringLibrary(),
+                LyricsLoader(emptyList(), LyricsSelector(), SessionLyricsCache()) { 0 },
+                backgroundScope,
+            )
+        model.retryQueueSource()
+        runCurrent()
+        assertEquals(1, retries)
+        assertEquals(error, model.state.value.commandError)
+        assertTrue(port.selections.isEmpty())
+        assertEquals(0, port.plays)
+        model.close()
+    }
+
+    @Test
+    fun moveAcrossUnknownContinuationIsRejectedBeforeDispatch() = runTest {
+        val entries =
+            listOf("current", "loaded", "manual").map { QueueEntry(QueueEntryId(it), TrackId(it)) }
+        val port =
+            EngineeringPort().apply {
+                queue.value =
+                    QueueSnapshot(
+                        entries,
+                        entries[0].id,
+                        source =
+                            QueueSourceState(
+                                "session",
+                                PublicPlaylistRef("List", SourceRef("ytm", "playlist", "list")),
+                                0,
+                                emptyList(),
+                                deferredEndIds = listOf(entries[2].id),
+                            ),
+                    )
+            }
+        val model =
+            PlayerModel(
+                port,
+                EngineeringLibrary(),
+                LyricsLoader(emptyList(), LyricsSelector(), SessionLyricsCache()) { 0 },
+                backgroundScope,
+            )
+        runCurrent()
+        model.moveEntry(entries[1].id, 1)
+        runCurrent()
+        assertTrue(port.commands.isEmpty())
+        model.moveEntry(entries[1].id, 0)
+        runCurrent()
+        assertEquals(
+            listOf<app.musicplayer.queue.QueueCommand>(
+                app.musicplayer.queue.QueueCommand.MoveUpcoming(entries[1].id, 0)
+            ),
+            port.commands,
+        )
+        model.close()
+    }
+
     @Test
     fun restoredPauseIsDisplayedWithoutPlayAndModelCloseLeavesServiceAlone() = runTest {
         val port = EngineeringPort()

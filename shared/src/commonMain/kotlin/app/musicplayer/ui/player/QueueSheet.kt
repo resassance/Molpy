@@ -12,6 +12,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.*
 import app.musicplayer.artwork.ArtworkLoader
+import app.musicplayer.catalog.PublicPlaylistRef
 import app.musicplayer.model.*
 import app.musicplayer.queue.QueueOrder
 import app.musicplayer.ui.components.*
@@ -23,6 +24,7 @@ fun QueueSheet(
     state: PlayerState,
     model: PlayerModel,
     artwork: ArtworkLoader,
+    onOpenPublicPlaylist: ((PublicPlaylistRef) -> Unit)? = null,
     onClose: () -> Unit,
 ) {
     val queue = presentQueue(state.queue, state.queueTracks)
@@ -42,15 +44,26 @@ fun QueueSheet(
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("Очередь", style = MaterialTheme.typography.headlineMedium)
+                    val loadedCount = queue.upcoming.size + if (queue.current != null) 1 else 0
                     Text(
-                        "${queue.upcoming.size+if(queue.current != null) 1 else 0} в очереди",
+                        if (queue.gap != null) "$loadedCount загружено · есть продолжение"
+                        else "$loadedCount в очереди",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                ShuffleButton(state.queue.shuffleEnabled, model::toggleShuffle)
+                QueueShuffleButton(state.queue, model::toggleShuffle)
                 IconButton(onClose) { Icon(AppIcons.Close, "Закрыть очередь") }
             }
+            if (queue.shufflePending)
+                Text(
+                    "Подготавливаем перемешивание",
+                    Modifier.padding(vertical = 8.dp).semantics {
+                        liveRegion = LiveRegionMode.Polite
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             LazyColumn(
                 Modifier.weight(1f, fill = false),
                 contentPadding = PaddingValues(bottom = 24.dp),
@@ -59,6 +72,17 @@ fun QueueSheet(
                     item { InlineError(error, model::retryMetadata) }
                 }
                 state.commandError?.let { error -> item { InlineError(error) } }
+                queue.sourceRecoveryError?.let { error -> item { InlineError(error) } }
+                if (queue.gap == null)
+                    queue.sourceError?.let { error ->
+                        item(key = "source-error") {
+                            Column {
+                                InlineError(error)
+                                if (queue.sourceCanRetry)
+                                    TextButton(model::retryQueueSource) { Text("Повторить") }
+                            }
+                        }
+                    }
                 queue.current?.track?.let { track ->
                     item {
                         Text(
@@ -89,11 +113,17 @@ fun QueueSheet(
                         )
                     }
                 }
-                items(queue.upcoming, key = { it.entryId.value }) { item ->
+                itemsIndexed(queue.upcoming, key = { _, item -> item.entryId.value }) {
+                    globalIndex,
+                    item ->
+                    queue.gap
+                        ?.takeIf { it.beforeIndex == globalIndex }
+                        ?.let { gap ->
+                            QueueSourceStatus(gap, model::retryQueueSource, onOpenPublicPlaylist)
+                        }
                     val track = item.track
                     var horizontal by remember(item.entryId) { mutableFloatStateOf(0f) }
                     var vertical by remember(item.entryId) { mutableFloatStateOf(0f) }
-                    val globalIndex = queue.upcoming.indexOfFirst { it.entryId == item.entryId }
                     Box(
                         Modifier.fillMaxWidth().pointerInput(item.entryId) {
                             detectHorizontalDragGestures(
@@ -119,23 +149,40 @@ fun QueueSheet(
                             Modifier.offset { IntOffset(horizontal.roundToInt(), 0) }
                                 .background(MaterialTheme.colorScheme.surface)
                                 .semantics {
-                                    customActions =
-                                        listOf(
-                                            CustomAccessibilityAction("Выше") {
-                                                if (globalIndex > 0)
+                                    customActions = buildList {
+                                        if (
+                                            canMoveQueueEntry(
+                                                state.queue,
+                                                item.entryId,
+                                                globalIndex - 1,
+                                            )
+                                        )
+                                            add(
+                                                CustomAccessibilityAction("Выше") {
                                                     model.moveEntry(item.entryId, globalIndex - 1)
-                                                true
-                                            },
-                                            CustomAccessibilityAction("Ниже") {
-                                                if (globalIndex < queue.upcoming.lastIndex)
+                                                    true
+                                                }
+                                            )
+                                        if (
+                                            canMoveQueueEntry(
+                                                state.queue,
+                                                item.entryId,
+                                                globalIndex + 1,
+                                            )
+                                        )
+                                            add(
+                                                CustomAccessibilityAction("Ниже") {
                                                     model.moveEntry(item.entryId, globalIndex + 1)
-                                                true
-                                            },
+                                                    true
+                                                }
+                                            )
+                                        add(
                                             CustomAccessibilityAction("Удалить") {
                                                 model.removeEntry(item.entryId)
                                                 true
-                                            },
+                                            }
                                         )
+                                    }
                                 }
                         if (track != null)
                             TrackRow(
@@ -171,7 +218,14 @@ fun QueueSheet(
                                                     val target =
                                                         (index + delta).coerceIn(upcoming.indices)
                                                     if (delta != 0 && target != index) {
-                                                        model.moveEntry(item.entryId, target)
+                                                        if (
+                                                            canMoveQueueEntry(
+                                                                latest.queue,
+                                                                item.entryId,
+                                                                target,
+                                                            )
+                                                        )
+                                                            model.moveEntry(item.entryId, target)
                                                         vertical = 0f
                                                     }
                                                 }
@@ -193,7 +247,14 @@ fun QueueSheet(
                             }
                     }
                 }
-                if (queue.upcoming.isEmpty())
+                queue.gap
+                    ?.takeIf { it.beforeIndex == queue.upcoming.size }
+                    ?.let { gap ->
+                        item(key = "source-gap") {
+                            QueueSourceStatus(gap, model::retryQueueSource, onOpenPublicPlaylist)
+                        }
+                    }
+                if (queue.upcoming.isEmpty() && queue.gap == null)
                     item {
                         Text(
                             "Дальше пока ничего нет",
@@ -203,5 +264,54 @@ fun QueueSheet(
                     }
             }
         }
+    }
+}
+
+@Composable
+internal fun QueueShuffleButton(queue: QueueSnapshot, onClick: () -> Unit) {
+    val pending = queue.source?.let { it.hasMore && it.shuffleRequested } == true
+    if (pending) {
+        IconToggleButton(
+            checked = false,
+            onCheckedChange = { onClick() },
+            modifier =
+                Modifier.size(48.dp).semantics {
+                    contentDescription = "Отменить подготовку перемешивания"
+                    stateDescription = "Подготавливаем перемешивание"
+                },
+        ) {
+            Icon(
+                AppIcons.Shuffle,
+                null,
+                Modifier.size(24.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    } else ShuffleButton(queue.shuffleEnabled, onClick)
+}
+
+@Composable
+private fun QueueSourceStatus(
+    gap: QueueSourceGap,
+    onRetry: () -> Unit,
+    onOpenPublicPlaylist: ((PublicPlaylistRef) -> Unit)?,
+) {
+    Column(
+        Modifier.fillMaxWidth().padding(vertical = 12.dp).semantics {
+            liveRegion = LiveRegionMode.Polite
+        }
+    ) {
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
+        Text(
+            queueSourceMessage(gap),
+            Modifier.padding(top = 12.dp),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        gap.error?.let { InlineError(it) }
+        if (gap.canRetry) TextButton(onRetry) { Text("Повторить") }
+        val ref = gap.reopen
+        if (ref != null && onOpenPublicPlaylist != null)
+            TextButton({ onOpenPublicPlaylist(ref) }) { Text("Открыть плейлист") }
     }
 }
