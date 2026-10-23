@@ -198,7 +198,7 @@ class PlayerModel(
     }
 
     fun moveEntry(id: QueueEntryId, toIndex: Int) = command {
-        player.dispatch(QueueCommand.Move(id, toIndex))
+        player.dispatch(QueueCommand.MoveUpcoming(id, toIndex))
         AppResult.Success(Unit)
     }
 

@@ -84,19 +84,22 @@ class QueueListPlaybackTest {
                 tracks[it.id] = it
                 AppResult.Success(Unit)
             }
-        assertIs<AppResult.Success<Unit>>(commands.playList(listOf(a, a, b), 1))
+        assertIs<AppResult.Success<Unit>>(commands.playList(listOf(a, a, b, b), 1))
         runCurrent()
         val entries = queue.state.value.entries
         assertNotEquals(entries[0].id, entries[1].id)
         assertEquals(entries[1].id, queue.state.value.currentEntryId)
         queue.seek(1234)
         val before = engine.loads
-        commands.dispatch(QueueCommand.Move(entries[1].id, 2))
+        commands.dispatch(QueueCommand.MoveUpcoming(entries[3].id, 0))
         assertEquals(entries[1].id, queue.state.value.currentEntryId)
         assertEquals(1234L, queue.state.value.positionMs)
         assertTrue(queue.state.value.playWhenReady)
         assertEquals(before, engine.loads)
-        assertEquals(listOf(a.id, b.id, a.id), queue.state.value.entries.map { it.trackId })
+        assertEquals(
+            listOf(entries[0], entries[1], entries[3], entries[2]),
+            queue.state.value.entries,
+        )
     }
 
     @Test
@@ -257,7 +260,7 @@ class QueueListPlaybackTest {
             }
         assertIs<AppResult.Success<Unit>>(commands.enqueue(a))
         assertEquals(listOf(a.id), queue.state.value.entries.map { it.trackId })
-        assertNull(queue.state.value.currentEntryId)
+        assertEquals(a.id, queue.state.value.entries.firstOrNull()?.trackId)
         assertEquals(0, engine.loads)
         val failed =
             QueuePlaybackCommands(queue) {
@@ -265,6 +268,58 @@ class QueueListPlaybackTest {
             }
         assertEquals(ErrorCode.DATABASE, failed.enqueue(b).errorOrNull()?.code)
         assertEquals(listOf(a.id), queue.state.value.entries.map { it.trackId })
+    }
+
+    @Test
+    fun emptyInsertionWaitsForExplicitPlayAndKeepsModeOnRestore() = runTest {
+        val engine = Engine()
+        val tracks = mutableMapOf<TrackId, Track>()
+        val queue = queue(backgroundScope, engine, tracks)
+        val commands =
+            QueuePlaybackCommands(queue) { track ->
+                tracks[track.id] = track
+                AppResult.Success(Unit)
+            }
+        commands.enqueue(a, QueueInsertion.NEXT)
+        assertEquals(a.id, queue.snapshot.value.track?.id)
+        assertEquals(PlayerStatus.PAUSED, queue.snapshot.value.status)
+        assertEquals(0, engine.loads)
+        commands.dispatch(QueueCommand.SetShuffle(true))
+        val saved = queue.state.value
+        queue.restore(saved)
+        assertTrue(queue.state.value.shuffleEnabled)
+        assertEquals(saved.traversal, queue.state.value.traversal)
+        assertEquals(0, engine.loads)
+        queue.play()
+        assertEquals(1, engine.loads)
+    }
+
+    @Test
+    fun delayedInsertionsBothSucceedAndToggleDoesNotCancelRemember() = runTest {
+        val engine = Engine()
+        val tracks = mutableMapOf<TrackId, Track>()
+        val queue = queue(backgroundScope, engine, tracks)
+        val gate = CompletableDeferred<Unit>()
+        val commands =
+            QueuePlaybackCommands(queue) { track ->
+                if (track.id == b.id) gate.await()
+                tracks[track.id] = track
+                AppResult.Success(Unit)
+            }
+        commands.playList(listOf(a), 0)
+        val before = engine.snapshot.value
+        val first = launch { commands.enqueue(b, QueueInsertion.NEXT) }
+        runCurrent()
+        val c = Fixtures.track("c", sourceId = "c")
+        val second = launch { commands.enqueue(c, QueueInsertion.NEXT) }
+        runCurrent()
+        commands.dispatch(QueueCommand.ToggleShuffle)
+        gate.complete(Unit)
+        first.join()
+        second.join()
+        assertEquals(listOf(c.id, b.id), QueueOrder.upcoming(queue.state.value).map { it.trackId })
+        assertEquals(1, engine.loads)
+        assertEquals(before, engine.snapshot.value)
     }
 
     private fun queue(

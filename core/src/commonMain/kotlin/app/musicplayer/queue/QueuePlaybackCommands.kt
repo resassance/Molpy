@@ -17,11 +17,13 @@ class QueuePlaybackCommands(
     ) : this(queue, remember, null)
 
     private var generation = 0L
+    private val insertions = QueueInsertionGate()
 
     suspend fun playList(tracks: List<Track>, startIndex: Int): AppResult<Unit> {
         if (startIndex !in tracks.indices)
             return AppResult.Failure(AppError(ErrorCode.INVALID_CONFIG, "queue.list", false))
-        val selected = ++generation
+        invalidateQueue()
+        val selected = generation
         val frozen = tracks.toList()
         if (rememberList != null) {
             val result = rememberList.invoke(frozen)
@@ -37,14 +39,22 @@ class QueuePlaybackCommands(
         return queue.replace(entries, entries[startIndex].id) { selected == generation }
     }
 
-    suspend fun enqueue(track: Track): AppResult<Unit> {
-        val selected = ++generation
-        val saved = remember(track)
-        checkCurrent(selected)
-        if (saved is AppResult.Failure) return saved
-        val entry = QueueEntry(QueueEntryId(Uuid.random().toString()), track.id)
-        queue.dispatch(QueueCommand.Add(listOf(entry))) { selected == generation }
-        return AppResult.Success(Unit)
+    suspend fun enqueue(
+        track: Track,
+        position: QueueInsertion = QueueInsertion.END,
+    ): AppResult<Unit> {
+        invalidatePending()
+        return insertions.run { check ->
+            val saved = remember(track)
+            check()
+            if (saved is AppResult.Failure) return@run saved
+            val entry = QueueEntry(QueueEntryId(Uuid.random().toString()), track.id)
+            queue.dispatch(QueueCommand.Add(listOf(entry), position)) {
+                check()
+                true
+            }
+            AppResult.Success(Unit)
+        }
     }
 
     suspend fun select(
@@ -62,12 +72,22 @@ class QueuePlaybackCommands(
     }
 
     suspend fun dispatch(command: QueueCommand) {
-        invalidatePending()
+        when (command) {
+            is QueueCommand.Replace -> invalidateQueue()
+            is QueueCommand.SetShuffle,
+            QueueCommand.ToggleShuffle -> Unit
+            else -> invalidatePending()
+        }
         queue.dispatch(command)
     }
 
     fun invalidatePending() {
         ++generation
+    }
+
+    fun invalidateQueue() {
+        invalidatePending()
+        insertions.invalidate()
     }
 
     private suspend fun checkCurrent(selected: Long) {

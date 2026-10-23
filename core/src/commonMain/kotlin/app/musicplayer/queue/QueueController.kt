@@ -2,6 +2,7 @@ package app.musicplayer.queue
 
 import app.musicplayer.model.*
 import app.musicplayer.playback.*
+import kotlin.random.Random
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
@@ -16,7 +17,14 @@ class QueueController(
     private val engine: PlayerEngine,
     private val coordinator: PlaybackCoordinator,
     private val lookup: suspend (TrackId) -> Track?,
+    private val random: Random,
 ) {
+    constructor(
+        engine: PlayerEngine,
+        coordinator: PlaybackCoordinator,
+        lookup: suspend (TrackId) -> Track?,
+    ) : this(engine, coordinator, lookup, Random.Default)
+
     private val mutableState = MutableStateFlow(QueueSnapshot())
     val state: StateFlow<QueueSnapshot> = mutableState.asStateFlow()
     private val mutableSnapshot = MutableStateFlow(PlaybackSnapshot())
@@ -38,7 +46,15 @@ class QueueController(
             entries.firstOrNull { it.id == snapshot.currentEntryId } ?: entries.firstOrNull()
         val position =
             if (current?.id == snapshot.currentEntryId) snapshot.positionMs.coerceAtLeast(0) else 0
-        mutableState.value = QueueSnapshot(entries, current?.id, position, false)
+        mutableState.value =
+            QueueOrder.normalized(
+                snapshot.copy(
+                    entries = entries,
+                    currentEntryId = current?.id,
+                    positionMs = position,
+                    playWhenReady = false,
+                )
+            )
         val track = current?.let { lookup(it.trackId) }
         mutableSnapshot.value =
             if (current == null) PlaybackSnapshot()
@@ -101,7 +117,7 @@ class QueueController(
             }
             if (command is QueueCommand.Select && before.entries.none { it.id == command.id })
                 return@withLock null
-            val reduced = QueueReducer.reduce(before, command)
+            val reduced = QueueReducer.reduce(before, command, random)
             val after =
                 if (playWhenReady == null) reduced.snapshot
                 else
@@ -111,6 +127,32 @@ class QueueController(
                     )
             mutableState.value = after
             when {
+                command is QueueCommand.Add &&
+                    before.currentEntryId == null &&
+                    after.currentEntryId != null -> {
+                    cancelSelection()
+                    restoredPosition = true
+                    val selectedGeneration = generation
+                    val entry = after.entries.first { it.id == after.currentEntryId }
+                    mutableSnapshot.value =
+                        PlaybackSnapshot(PlayerStatus.PAUSED, entry, playWhenReady = false)
+                    async(start = CoroutineStart.UNDISPATCHED) {
+                            val track =
+                                try {
+                                    lookup(entry.trackId)
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (_: Exception) {
+                                    null
+                                }
+                            ensureActive()
+                            if (selectedGeneration != generation)
+                                throw CancellationException("Superseded queue metadata")
+                            mutableSnapshot.value = mutableSnapshot.value.copy(track = track)
+                            AppResult.Success(Unit)
+                        }
+                        .also { selection = it }
+                }
                 reduced.stopPlayback -> {
                     restoredPosition = false
                     cancelSelection()
