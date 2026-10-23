@@ -15,7 +15,11 @@ class MusicSearchCoordinator(
         onResults: (SearchPage) -> Unit,
     ): AppResult<SearchPage> {
         if (query.isBlank()) return AppResult.Success(SearchPage(null, emptyList(), null))
-        val primary = catalog.search(query.trim(), filter)
+        val primary =
+            when (val result = catalog.search(query.trim(), filter)) {
+                is AppResult.Success -> AppResult.Success(displayPage(result.value))
+                is AppResult.Failure -> result
+            }
         if (filter != SearchFilter.ALL && filter != SearchFilter.TRACKS)
             return primary.also { it.valueOrNull()?.let(onResults) }
         val page = primary.valueOrNull()
@@ -71,5 +75,12 @@ class MusicSearchCoordinator(
         }
     }
 
-    override suspend fun more(cursor: CatalogCursor) = catalog.more(cursor)
+    override suspend fun more(cursor: CatalogCursor): AppResult<SearchPage> =
+        when (val result = catalog.more(cursor)) {
+            is AppResult.Success -> AppResult.Success(displayPage(result.value))
+            is AppResult.Failure -> result
+        }
+
+    private fun displayPage(page: SearchPage): SearchPage =
+        page.withTracks(page.tracks().map(tracks::displayTrack))
 }

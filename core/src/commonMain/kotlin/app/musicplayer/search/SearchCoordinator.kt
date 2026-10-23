@@ -179,6 +179,22 @@ class SearchCoordinator(
         return queryTokens.isNotEmpty() && queryTokens.all { it in trackTokens }
     }
 
+    internal fun displayTrack(track: Track): Track {
+        if (track.provenance.tentative) return parseTentative(track)
+        if (track.artwork.kind != ArtworkKind.VIDEO) return track
+        var title = normalizer.cleanDisplayTitle(track.title)
+        ARTIST_TITLE.find(title)?.let { delimiter ->
+            val prefix = normalizer.normalizeArtist(title.substring(0, delimiter.range.first))
+            val song = title.substring(delimiter.range.last + 1).trim()
+            if (
+                song.isNotEmpty() &&
+                    track.artists.any { normalizer.normalizeArtist(it.name) == prefix }
+            )
+                title = song
+        }
+        return track.copy(title = title.ifBlank { track.title })
+    }
+
     private fun parseTentative(track: Track): Track {
         if (!track.provenance.tentative) return track
         val title = normalizer.cleanDisplayTitle(track.title)
