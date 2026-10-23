@@ -8,7 +8,11 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 
-data class SearchResults(val tracks: List<Track>, val primaryFailure: AppError? = null)
+data class SearchResults(
+    val tracks: List<Track>,
+    val primaryFailure: AppError? = null,
+    val fromFallback: Boolean = false,
+)
 
 class SearchCoordinator(
     private val catalog: CatalogPort,
@@ -22,9 +26,18 @@ class SearchCoordinator(
     ): AppResult<SearchResults> {
         val trimmed = query.trim()
         if (trimmed.isEmpty()) return AppResult.Success(SearchResults(emptyList()))
+        return search(trimmed, catalog.searchSongs(trimmed), onResults)
+    }
+
+    suspend fun search(
+        query: String,
+        primary: AppResult<List<Track>>,
+        onResults: (SearchResults) -> Unit = {},
+    ): AppResult<SearchResults> {
+        val trimmed = query.trim()
+        if (trimmed.isEmpty()) return AppResult.Success(SearchResults(emptyList()))
         val strictIntent = SearchIntent(trimmed, normalizer.versionMarkers(trimmed))
         val intent = SearchIntent(trimmed, normalizer.queryVersionMarkers(trimmed))
-        val primary = catalog.searchSongs(trimmed)
         if (primary is AppResult.Success) {
             val suitable =
                 primary.value
@@ -47,16 +60,32 @@ class SearchCoordinator(
         )
     }
 
+    suspend fun enrich(
+        query: String,
+        initial: List<Track>,
+        allowMetadataMatching: Boolean,
+        onResults: (SearchResults) -> Unit = {},
+    ): AppResult<SearchResults> =
+        complete(
+            initial,
+            null,
+            SearchIntent(query, normalizer.queryVersionMarkers(query)),
+            allowMetadataMatching,
+            onResults,
+            fromFallback = false,
+        )
+
     private suspend fun complete(
         initial: List<Track>,
         initialFailure: AppError?,
         intent: SearchIntent,
         enrich: Boolean,
         onResults: (SearchResults) -> Unit,
+        fromFallback: Boolean = enrich,
     ): AppResult<SearchResults> {
         val tracks = initial.toMutableList()
         var primaryFailure = initialFailure
-        onResults(SearchResults(tracks.toList(), primaryFailure))
+        onResults(SearchResults(tracks.toList(), primaryFailure, fromFallback))
         val updates = Mutex()
         val requests = Semaphore(3)
         val matchesByIndex = mutableMapOf<Int, List<Track>>()
@@ -96,7 +125,7 @@ class SearchCoordinator(
                             tracks[index] = track
                             applyMetadata(index)
                         }
-                        onResults(SearchResults(tracks.toList(), primaryFailure))
+                        onResults(SearchResults(tracks.toList(), primaryFailure, fromFallback))
                     }
                 }
             }
@@ -118,14 +147,16 @@ class SearchCoordinator(
                                         matchesByIndex[index] = matches.value
                                         applyMetadata(index)
                                     }
-                                    onResults(SearchResults(tracks.toList(), primaryFailure))
+                                    onResults(
+                                        SearchResults(tracks.toList(), primaryFailure, fromFallback)
+                                    )
                                 }
                             }
                         }
                     }
             (matches + durationJob).awaitAll()
         }
-        return AppResult.Success(SearchResults(tracks.toList(), primaryFailure))
+        return AppResult.Success(SearchResults(tracks.toList(), primaryFailure, fromFallback))
     }
 
     private fun suitable(track: Track, intent: SearchIntent): Boolean {

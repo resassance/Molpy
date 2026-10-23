@@ -1,0 +1,75 @@
+package app.musicplayer.search
+
+import app.musicplayer.catalog.*
+import app.musicplayer.model.*
+
+class MusicSearchCoordinator(
+    private val catalog: MusicSearchPort,
+    private val tracks: SearchCoordinator,
+) : MusicSearchPort {
+    override suspend fun search(query: String, filter: SearchFilter) = search(query, filter) {}
+
+    suspend fun search(
+        query: String,
+        filter: SearchFilter,
+        onResults: (SearchPage) -> Unit,
+    ): AppResult<SearchPage> {
+        if (query.isBlank()) return AppResult.Success(SearchPage(null, emptyList(), null))
+        val primary = catalog.search(query.trim(), filter)
+        if (filter != SearchFilter.ALL && filter != SearchFilter.TRACKS)
+            return primary.also { it.valueOrNull()?.let(onResults) }
+        val page = primary.valueOrNull()
+        if (filter == SearchFilter.ALL && page != null && page.items().isNotEmpty()) {
+            onResults(page)
+            if (page.tracks().isEmpty()) return primary
+            return when (
+                val result =
+                    tracks.enrich(query, page.tracks(), false) {
+                        onResults(page.withTracks(it.tracks))
+                    }
+            ) {
+                is AppResult.Success -> AppResult.Success(page.withTracks(result.value.tracks))
+                is AppResult.Failure -> primary
+            }
+        }
+        val seed =
+            if (filter == SearchFilter.TRACKS)
+                when (primary) {
+                    is AppResult.Success -> AppResult.Success(primary.value.tracks())
+                    is AppResult.Failure -> primary
+                }
+            else null
+        fun normalized(result: SearchResults): SearchPage {
+            val original = page?.tracks().orEmpty().map { it.id }.toSet()
+            val keepsCursor =
+                !result.fromFallback &&
+                    result.tracks.isNotEmpty() &&
+                    result.tracks.all { it.id in original } &&
+                    result.primaryFailure == null
+            return SearchPage(
+                null,
+                listOf(
+                    SearchSection(
+                        SearchFilter.TRACKS,
+                        result.tracks.mapNotNull { track ->
+                            track.candidates.firstOrNull()?.source?.let {
+                                SearchItem.TrackItem(track, it)
+                            }
+                        },
+                    )
+                ),
+                if (keepsCursor) page?.next else null,
+                result.primaryFailure ?: primary.errorOrNull() ?: page?.primaryFailure,
+            )
+        }
+        val result =
+            if (seed == null) tracks.search(query) { onResults(normalized(it)) }
+            else tracks.search(query, seed) { onResults(normalized(it)) }
+        return when (result) {
+            is AppResult.Success -> AppResult.Success(normalized(result.value))
+            is AppResult.Failure -> result
+        }
+    }
+
+    override suspend fun more(cursor: CatalogCursor) = catalog.more(cursor)
+}
