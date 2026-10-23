@@ -128,7 +128,7 @@ private fun DownloadRow(
             Column(Modifier.weight(1f).padding(start = 12.dp)) {
                 Text(track.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
-                    track.artists.joinToString { it.name },
+                    trackPresentation(track).artists.joinToString { it.name },
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.bodyMedium,

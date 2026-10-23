@@ -35,6 +35,7 @@ fun NowPlayingScreen(
     onAlbum: (AlbumRef) -> Unit,
     visible: Boolean = true,
     gesturesEnabled: Boolean = true,
+    onArtists: ((Track) -> Unit)? = null,
 ) {
     val colors = MaterialTheme.colorScheme
     val track = state.currentTrack
@@ -118,16 +119,18 @@ fun NowPlayingScreen(
                                                 maxLines = 2,
                                                 overflow = TextOverflow.Ellipsis,
                                             )
+                                            val artistCredits =
+                                                trackPresentation(shown.track).artists
                                             Text(
-                                                shown.track.artists.joinToString { it.name },
+                                                artistCredits.joinToString { it.name },
                                                 Modifier.clickable(
-                                                    enabled =
-                                                        active &&
-                                                            shown.track.artists
-                                                                .firstOrNull()
-                                                                ?.source != null
+                                                    enabled = active && artistCredits.isNotEmpty()
                                                 ) {
-                                                    shown.track.artists.firstOrNull()?.let(onArtist)
+                                                    if (onArtists != null) onArtists(shown.track)
+                                                    else
+                                                        shown.track.artists
+                                                            .firstOrNull()
+                                                            ?.let(onArtist)
                                                 },
                                                 style = MaterialTheme.typography.bodyLarge,
                                                 maxLines = 1,

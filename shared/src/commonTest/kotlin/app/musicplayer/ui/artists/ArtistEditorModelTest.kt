@@ -11,6 +11,27 @@ import kotlinx.coroutines.test.*
 @OptIn(ExperimentalCoroutinesApi::class)
 class ArtistEditorModelTest {
     @Test
+    fun networkChangeClearsSpinnerWithoutDiscardingDraft() = runTest {
+        val repo = ArtistModelRepository()
+        val search = ArtistModelSearch()
+        search.query = { awaitCancellation() }
+        val model = ArtistEditorModel(repo, search, backgroundScope)
+        model.open(repo.track)
+        runCurrent()
+        model.setQuery("Artist")
+        advanceTimeBy(301)
+        runCurrent()
+        assertTrue(model.state.value.results.loading)
+        model.networkInvalidated()
+        runCurrent()
+        assertFalse(model.state.value.results.loading)
+        assertEquals(ErrorCode.NETWORK, model.state.value.results.error?.code)
+        assertEquals(repo.track, model.state.value.track)
+        assertEquals(listOf(ArtistChoice.Existing(repo.a)), model.state.value.choices)
+        model.close()
+    }
+
+    @Test
     fun localEditsKeepOrderAndCanBeSavedWhileCatalogIsUnavailable() = runTest {
         val repo = ArtistModelRepository()
         val model = ArtistEditorModel(repo, ArtistModelSearch(), backgroundScope)

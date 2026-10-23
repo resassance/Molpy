@@ -22,6 +22,7 @@ fun TrackMenu(
     onDownloads: () -> Unit,
     hasDownload: Boolean,
     onClose: () -> Unit,
+    onEditArtists: (() -> Unit)? = null,
 ) {
     ModalBottomSheet(
         onDismissRequest = onClose,
@@ -38,7 +39,7 @@ fun TrackMenu(
         ) {
             Text(track.title, style = MaterialTheme.typography.titleLarge)
             Text(
-                track.artists.joinToString { it.name },
+                trackPresentation(track).artists.joinToString { it.name },
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(12.dp))
@@ -47,6 +48,7 @@ fun TrackMenu(
                 if (favorite) AppIcons.HeartFilled else AppIcons.Heart,
                 onFavorite,
             )
+            onEditArtists?.let { MenuAction("Изменить исполнителей", AppIcons.Edit, it) }
             MenuAction("Добавить в очередь", AppIcons.QueueAdd, onEnqueue)
             MenuAction("Добавить в плейлист", AppIcons.PlaylistAdd, onPlaylist)
             if (hasDownload) MenuAction("Открыть загрузки", AppIcons.Download, onDownloads)

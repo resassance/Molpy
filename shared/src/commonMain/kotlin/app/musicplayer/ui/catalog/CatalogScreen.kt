@@ -16,6 +16,7 @@ import app.musicplayer.artwork.ArtworkLoader
 import app.musicplayer.catalog.*
 import app.musicplayer.model.*
 import app.musicplayer.ui.components.*
+import app.musicplayer.ui.profile.formatListeningTime
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -25,10 +26,48 @@ fun CatalogScreen(
     onBack: () -> Unit,
     onMenu: (Track) -> Unit,
     onAlbum: (AlbumRef) -> Unit,
+    onMerge: (() -> Unit)? = null,
+    onMerges: (() -> Unit)? = null,
+    playedMs: Long? = null,
 ) {
     val state by model.state.collectAsState()
     Column(Modifier.fillMaxSize()) {
-        ScreenHeader(if (state.albumRef != null) "Альбом" else "Артист", onBack)
+        var menu by remember { mutableStateOf(false) }
+        ScreenHeader(
+            if (state.albumRef != null) "Альбом" else "Артист",
+            onBack,
+            action =
+                if (onMerge == null) null
+                else {
+                    {
+                        Box {
+                            IconButton({ menu = true }) {
+                                Icon(AppIcons.More, "Действия с артистом")
+                            }
+                            DropdownMenu(menu, { menu = false }) {
+                                DropdownMenuItem(
+                                    text = { Text("Объединить с…") },
+                                    leadingIcon = { Icon(AppIcons.Plus, null) },
+                                    onClick = {
+                                        menu = false
+                                        onMerge()
+                                    },
+                                )
+                                onMerges?.let { action ->
+                                    DropdownMenuItem(
+                                        text = { Text("Объединённые карточки") },
+                                        leadingIcon = { Icon(AppIcons.Edit, null) },
+                                        onClick = {
+                                            menu = false
+                                            action()
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                    }
+                },
+        )
         PrimaryTabRow(
             selectedTabIndex = state.section.ordinal,
             containerColor = Color.Transparent,
@@ -71,7 +110,14 @@ fun CatalogScreen(
                     )
                     if (state.artists.isNotEmpty())
                         Text(
-                            state.artists.joinToString { it.name },
+                            state.artists.map { artistName(it) }.joinToString(),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    if (state.artistId != null)
+                        Text(
+                            playedMs?.let { "Прослушано: ${formatListeningTime(it)}" }
+                                ?: "Прослушано: —",
+                            style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     Spacer(Modifier.height(16.dp))
@@ -96,7 +142,7 @@ fun CatalogScreen(
                 if (state.tracks.loading) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
                 state.tracks.error?.let { item { InlineError(it, model::retry) } }
                 itemsIndexed(
-                    state.tracks.data?.items.orEmpty(),
+                    state.allTracks(),
                     key = { index, track -> "$index:${track.id.value}" },
                 ) { index, track ->
                     TrackRow(track, artwork, { model.play(index) }, { onMenu(track) })
@@ -113,7 +159,7 @@ fun CatalogScreen(
                 if (
                     !state.tracks.loading &&
                         state.tracks.error == null &&
-                        state.tracks.data?.items?.isEmpty() == true
+                        state.allTracks().isEmpty()
                 )
                     item {
                         Text(

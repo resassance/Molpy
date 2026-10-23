@@ -173,6 +173,18 @@ class ArtistEditorModel(
         }
     }
 
+    fun networkInvalidated() {
+        queryGeneration++
+        queryRequest?.cancel()
+        if (state.value.track != null)
+            mutable.update {
+                it.copy(
+                    results =
+                        LoadState(error = AppError(ErrorCode.NETWORK, "artists.editor.route", true))
+                )
+            }
+    }
+
     fun closeDraft() {
         generation++
         queryGeneration++

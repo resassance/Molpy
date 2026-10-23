@@ -3,6 +3,7 @@ package app.musicplayer
 import android.content.Context
 import android.os.SystemClock
 import androidx.media3.common.util.UnstableApi
+import app.musicplayer.artists.*
 import app.musicplayer.artwork.ArtworkLoader
 import app.musicplayer.artwork.samplePixels
 import app.musicplayer.catalog.*
@@ -18,6 +19,7 @@ import app.musicplayer.network.*
 import app.musicplayer.playback.*
 import app.musicplayer.queue.*
 import app.musicplayer.search.SearchCoordinator
+import app.musicplayer.storage.RoomArtistRepository
 import app.musicplayer.storage.RoomAudioMetadataRepository
 import app.musicplayer.storage.RoomCollectionsRepository
 import app.musicplayer.storage.RoomLibraryRepository
@@ -25,6 +27,7 @@ import app.musicplayer.storage.RoomListeningRepository
 import app.musicplayer.storage.RoomPlaybackPreferencesRepository
 import app.musicplayer.storage.createMusicDatabase
 import app.musicplayer.ui.MolpyModels
+import app.musicplayer.ui.artists.*
 import app.musicplayer.ui.catalog.CatalogModel
 import app.musicplayer.ui.components.TrackActions
 import app.musicplayer.ui.downloads.DownloadsModel
@@ -49,6 +52,7 @@ class AppGraph(private val context: Context) {
     val library by lazy { RoomLibraryRepository(database, System::currentTimeMillis) }
     val collections by lazy { RoomCollectionsRepository(database, System::currentTimeMillis) }
     val listening by lazy { RoomListeningRepository(database, System::currentTimeMillis) }
+    val artists by lazy { RoomArtistRepository(database, System::currentTimeMillis) }
     private val audioMetadata by lazy { RoomAudioMetadataRepository(database) }
     private val playbackPreferences by lazy {
         RoomPlaybackPreferencesRepository(database, scope, diagnostics::record)
@@ -89,6 +93,9 @@ class AppGraph(private val context: Context) {
     private var catalogSession: InnerTube? = null
     private var activeCatalog: CatalogPort? = null
     private var activeBrowse: BrowseCatalog? = null
+    private var activeArtistSearch: ArtistSearchPort? = null
+    private val artistSearch: ArtistSearchPort =
+        RoutedArtistSearch({ activeArtistSearch }, { network.context.value })
     val browse: BrowseCatalog = RoutedBrowseCatalog({ activeBrowse }, { network.context.value })
     private var activeLyrics: LyricsPort? = null
     private val remoteCatalog =
@@ -165,6 +172,7 @@ class AppGraph(private val context: Context) {
                         if (artworkDelegate.isInitialized()) artwork.networkInvalidated()
                         activeCatalog = null
                         activeBrowse = null
+                        activeArtistSearch = null
                         activeLyrics = null
                         catalogSession?.close()
                         catalogSession = null
@@ -177,6 +185,8 @@ class AppGraph(private val context: Context) {
                         catalogSession = session
                         activeCatalog = InnerTubeCatalog(session, library)
                         activeBrowse = InnerTubeBrowseCatalog(session, context.generation, library)
+                        activeArtistSearch =
+                            InnerTubeArtistSearch(session, requireNotNull(activeBrowse))
                         activeLyrics = YouTubeLyrics(session)
                         models.removeAll { it.get() == null }
                         models.forEach { it.get()?.networkActivated() }
@@ -207,20 +217,26 @@ class AppGraph(private val context: Context) {
         AppResult.Failure(AppError(ErrorCode.NETWORK, operation, true))
 
     @androidx.annotation.OptIn(markerClass = [UnstableApi::class])
-    fun createModels(player: QueuePlaybackPort, ownerScope: CoroutineScope): MolpyModels =
-        MolpyModels(
+    fun createModels(player: QueuePlaybackPort, ownerScope: CoroutineScope): MolpyModels {
+        val directory = ArtistDirectoryModel(artists, ownerScope)
+        return MolpyModels(
                 PlayerModel(player, library, lyrics, ownerScope),
                 SearchModel(search, player, ownerScope),
-                LibraryModel(collections, player, ownerScope),
-                CatalogModel(browse, collections, player, ownerScope),
-                ProfileModel(listening, player, ownerScope),
+                LibraryModel(collections, player, ownerScope, directory.state),
+                CatalogModel(browse, collections, player, ownerScope, directory.state),
+                ProfileModel(listening, player, ownerScope, directory.state),
                 DownloadsModel(downloads, { storageUsage.measure() }, ownerScope),
                 NetworkSettingsModel(network, library, secrets, ownerScope),
                 PaletteModel({ artwork.samplePixels(context, it) }, ownerScope),
                 TrackActions(library, collections, player, downloads),
                 playbackSettings = PlaybackSettingsModel(playbackPreferences, ownerScope),
+                artists = directory,
+                artistEditor = ArtistEditorModel(artists, artistSearch, ownerScope),
+                artistMerge = ArtistMergeModel(artists, ownerScope),
+                artistRepository = artists,
             )
             .also { models.add(WeakReference(it)) }
+    }
 
     @androidx.annotation.OptIn(markerClass = [UnstableApi::class])
     internal fun createPlayback(scope: CoroutineScope): PlaybackRuntime =

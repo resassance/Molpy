@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
+import app.musicplayer.artists.*
 import app.musicplayer.artwork.ArtworkLoader
 import app.musicplayer.collections.*
 import app.musicplayer.downloads.DownloadState
@@ -39,11 +40,18 @@ internal fun MolpyRouteContent(
     }
     val playlist: (PlaylistSummary) -> Unit = { navigation.push(AppRoute.Playlist(it.id)) }
     val album: (SavedAlbum) -> Unit = { navigation.push(AppRoute.Album(it.ref, it.key)) }
-    val artist: (SavedArtist) -> Unit = { navigation.push(AppRoute.Artist(it.ref, it.key)) }
-    LaunchedEffect(route) {
+    val directory = models.artists?.state?.collectAsState()?.value?.data
+    fun artistRoute(ref: ArtistRef, key: String): AppRoute.Artist {
+        val id = ArtistId(key).takeIf { it in directory?.profiles.orEmpty() }
+        return AppRoute.Artist(ref, key, id)
+    }
+    val artist: (SavedArtist) -> Unit = { navigation.push(artistRoute(it.ref, it.key)) }
+    LaunchedEffect(route, directory?.revision) {
         when (route) {
             is AppRoute.Album -> models.catalog.album(route.ref, route.localKey)
-            is AppRoute.Artist -> models.catalog.artist(route.ref, route.localKey)
+            is AppRoute.Artist ->
+                if (route.artistId != null) models.catalog.localArtist(route.artistId)
+                else models.catalog.artist(route.ref, route.localKey)
             AppRoute.Root(AppTab.PROFILE),
             AppRoute.History -> models.profile.loadHistory(reset = true)
             else -> Unit
@@ -82,7 +90,7 @@ internal fun MolpyRouteContent(
                         artwork,
                         { navigation.push(AppRoute.Settings) },
                         { navigation.push(AppRoute.History) },
-                        { navigation.push(AppRoute.Artist(it.artist, it.key)) },
+                        { navigation.push(artistRoute(it.artist, it.key)) },
                         onMenu,
                         formatDate,
                     )
@@ -120,10 +128,19 @@ internal fun MolpyRouteContent(
                             state.albumRef != null &&
                             state.localKey == route.localKey
                     is AppRoute.Artist ->
-                        state.artistRef?.source == route.ref.source &&
-                            state.artistRef != null &&
-                            state.localKey == route.localKey
+                        if (route.artistId != null)
+                            state.artistId == route.artistId ||
+                                directory?.let { d ->
+                                    route.artistId
+                                        .takeIf { it in d.profiles }
+                                        ?.let { ArtistResolver.root(it, d) == state.artistId }
+                                } == true
+                        else
+                            state.artistRef?.source == route.ref.source &&
+                                state.artistRef != null &&
+                                state.localKey == route.localKey
                 }
+            val profile by models.profile.profile.collectAsState()
             if (ready)
                 CatalogScreen(
                     models.catalog,
@@ -131,6 +148,20 @@ internal fun MolpyRouteContent(
                     back,
                     onMenu,
                     { navigation.push(AppRoute.Album(it)) },
+                    onMerge =
+                        state.artistId?.let { id ->
+                            { navigation.open(AppOverlay.ArtistMergePicker(id)) }
+                        },
+                    onMerges =
+                        state.artistId?.let { id ->
+                            { navigation.open(AppOverlay.ArtistMerges(id)) }
+                        },
+                    playedMs =
+                        profile.data
+                            ?.takeIf { it.artistRevision == directory?.revision }
+                            ?.artists
+                            ?.firstOrNull { it.key == state.artistId?.value }
+                            ?.playedMs ?: 0L,
                 )
             else
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

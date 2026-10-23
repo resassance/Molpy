@@ -70,7 +70,7 @@ fun MiniPlayer(
                         style = MaterialTheme.typography.bodyMedium,
                     )
                     Text(
-                        track.artists.joinToString { it.name },
+                        trackPresentation(track).artists.joinToString { it.name },
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,

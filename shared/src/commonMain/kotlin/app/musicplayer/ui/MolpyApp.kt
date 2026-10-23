@@ -9,9 +9,11 @@ import androidx.compose.ui.*
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import app.musicplayer.artists.*
 import app.musicplayer.artwork.ArtworkLoader
 import app.musicplayer.collections.*
 import app.musicplayer.model.*
+import app.musicplayer.ui.artists.*
 import app.musicplayer.ui.components.*
 import app.musicplayer.ui.library.*
 import app.musicplayer.ui.navigation.*
@@ -51,6 +53,32 @@ fun MolpyApp(
     var menuTrack by remember { mutableStateOf<Track?>(null) }
     var edit by remember { mutableStateOf<PlaylistEdit?>(null) }
     var busyEdit by remember { mutableStateOf<String?>(null) }
+    val artistDirectory = models.artists?.state?.collectAsState()?.value?.data ?: ArtistDirectory()
+    val artistEditor = models.artistEditor?.state?.collectAsState()?.value ?: ArtistEditorState()
+    val artistMerge = models.artistMerge?.state?.collectAsState()?.value ?: ArtistMergeState()
+    var artistTrack by remember { mutableStateOf<Track?>(null) }
+    var ensuredArtists by remember { mutableStateOf<TrackPresentation?>(null) }
+    var artistOpenGeneration by remember { mutableLongStateOf(0) }
+    var mergeQuery by remember { mutableStateOf("") }
+    LaunchedEffect(nav.overlays) {
+        if (nav.overlays.none { it is AppOverlay.ArtistEditor }) models.artistEditor?.closeDraft()
+        if (AppOverlay.ArtistMerge !in nav.overlays) models.artistMerge?.closeDraft()
+        if (nav.overlays.lastOrNull() is AppOverlay.ArtistMergePicker) mergeQuery = ""
+    }
+    LaunchedEffect(artistEditor.saved) {
+        if (artistEditor.saved && nav.overlays.lastOrNull() is AppOverlay.ArtistEditor)
+            navigation.back()
+    }
+    LaunchedEffect(artistMerge) {
+        if (
+            nav.overlays.lastOrNull() == AppOverlay.ArtistMerge &&
+                !artistMerge.saving &&
+                artistMerge.merge == null &&
+                artistMerge.split == null &&
+                artistMerge.error == null
+        )
+            navigation.back()
+    }
     val favoriteIds = library.data?.favorites.orEmpty().map { it.id }.toSet()
     val track = player.currentTrack
     LaunchedEffect(track?.id, track?.artwork, epoch) {
@@ -93,8 +121,42 @@ fun MolpyApp(
             }
         }
     }
+    fun openArtist(credit: ArtistCredit) {
+        credit.id?.let { id ->
+            navigation.push(AppRoute.Artist(ArtistRef(credit.name, credit.source), id.value, id))
+        }
+    }
+    fun openTrackArtists(value: Track) {
+        val repository = models.artistRepository ?: return
+        val selected = ++artistOpenGeneration
+        val expected = navigation.state.value
+        scope.launch {
+            val result = repository.ensure(value)
+            ensureActive()
+            if (selected != artistOpenGeneration || navigation.state.value != expected)
+                return@launch
+            when (result) {
+                is AppResult.Failure -> snackbar.showSnackbar(present(result.error).message)
+                is AppResult.Success -> {
+                    val credits = result.value.artists
+                    if (credits.size == 1) openArtist(credits.single())
+                    else if (credits.isNotEmpty()) {
+                        artistTrack = value
+                        ensuredArtists = result.value
+                        navigation.open(AppOverlay.ArtistSelection(value.id))
+                    } else
+                        snackbar.showSnackbar(
+                            "Исполнитель не указан. Его можно добавить в меню трека."
+                        )
+                }
+            }
+        }
+    }
     MolpyTheme(colors) {
-        CompositionLocalProvider(LocalArtworkEpoch provides epoch) {
+        CompositionLocalProvider(
+            LocalArtworkEpoch provides epoch,
+            LocalArtistDirectory provides artistDirectory,
+        ) {
             Box(
                 Modifier.fillMaxSize()
                     .background(
@@ -206,8 +268,106 @@ fun MolpyApp(
                     { navigation.push(AppRoute.Album(it)) },
                     visible = AppOverlay.NowPlaying in nav.overlays,
                     gesturesEnabled = nav.overlays.lastOrNull() == AppOverlay.NowPlaying,
+                    onArtists = if (models.artistRepository == null) null else ::openTrackArtists,
                 )
                 when (val overlay = nav.overlays.lastOrNull()) {
+                    is AppOverlay.ArtistEditor ->
+                        if (artistEditor.track?.id == overlay.trackId) {
+                            ArtistEditorSheet(
+                                artistEditor,
+                                artistDirectory,
+                                { index ->
+                                    models.artistEditor?.setQuery("")
+                                    navigation.open(AppOverlay.ArtistPicker(overlay.trackId, index))
+                                },
+                                {
+                                    models.artistEditor?.setQuery("")
+                                    navigation.open(AppOverlay.ArtistPicker(overlay.trackId, null))
+                                },
+                                { models.artistEditor?.remove(it) },
+                                { models.artistEditor?.save() },
+                                { models.artistEditor?.reset() },
+                                {
+                                    models.artistEditor?.closeDraft()
+                                    finish(overlay)
+                                },
+                            )
+                        }
+                    is AppOverlay.ArtistPicker ->
+                        ArtistPickerSheet(
+                            artistEditor.query,
+                            artistEditor.results,
+                            artistDirectory,
+                            { models.artistEditor?.setQuery(it) },
+                            { choice ->
+                                if (overlay.index == null) models.artistEditor?.add(choice)
+                                else models.artistEditor?.select(overlay.index, choice)
+                                models.artistEditor?.setQuery("")
+                                finish(overlay)
+                            },
+                            {
+                                models.artistEditor?.setQuery("")
+                                finish(overlay)
+                            },
+                            artwork = artwork,
+                        )
+                    is AppOverlay.ArtistSelection ->
+                        artistTrack
+                            ?.takeIf { it.id == overlay.trackId }
+                            ?.let { value ->
+                                val presentation = trackPresentation(value)
+                                val credits =
+                                    if (presentation.revision >= (ensuredArtists?.revision ?: 0))
+                                        presentation.artists
+                                    else ensuredArtists?.artists.orEmpty()
+                                ArtistSelectionSheet(credits, ::openArtist, { finish(overlay) })
+                            }
+                    is AppOverlay.ArtistMergePicker ->
+                        ArtistPickerSheet(
+                            mergeQuery,
+                            LoadState(emptyList()),
+                            artistDirectory,
+                            { mergeQuery = it },
+                            { choice ->
+                                if (choice is ArtistChoice.Existing) {
+                                    models.artistMerge?.preview(overlay.artistId, choice.id, null)
+                                    finish(overlay)
+                                    navigation.open(AppOverlay.ArtistMerge)
+                                }
+                            },
+                            { finish(overlay) },
+                            excluded = setOf(overlay.artistId),
+                            allowName = false,
+                            title = "Объединить с…",
+                        )
+                    is AppOverlay.ArtistMerges ->
+                        ArtistMergesSheet(
+                            overlay.artistId,
+                            artistDirectory,
+                            { id ->
+                                models.artistMerge?.previewSplit(id)
+                                navigation.open(AppOverlay.ArtistMerge)
+                            },
+                            { finish(overlay) },
+                        )
+                    AppOverlay.ArtistMerge ->
+                        ArtistMergeSheet(
+                            artistMerge,
+                            artistDirectory,
+                            {
+                                if (artistMerge.split != null) models.artistMerge?.confirmSplit()
+                                else models.artistMerge?.confirm()
+                            },
+                            {
+                                models.artistMerge?.closeDraft()
+                                finish(overlay)
+                            },
+                            { source ->
+                                artistMerge.merge?.let {
+                                    models.artistMerge?.preview(it.origin, it.target, source)
+                                }
+                            },
+                        )
                     AppOverlay.Queue ->
                         QueueSheet(player, models.player, artwork) { navigation.back() }
                     AppOverlay.Lyrics ->
@@ -275,6 +435,15 @@ fun MolpyApp(
                                     },
                                     downloads.assets.any { it.trackId == value.id },
                                     { finish(overlay) },
+                                    onEditArtists =
+                                        if (models.artistEditor == null) null
+                                        else {
+                                            {
+                                                finish(overlay)
+                                                models.artistEditor.open(value)
+                                                navigation.open(AppOverlay.ArtistEditor(value.id))
+                                            }
+                                        },
                                 )
                             }
                     is AppOverlay.PlaylistPicker ->

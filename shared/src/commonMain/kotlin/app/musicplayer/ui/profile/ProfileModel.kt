@@ -1,8 +1,10 @@
 package app.musicplayer.ui.profile
 
+import app.musicplayer.artists.*
 import app.musicplayer.listening.*
 import app.musicplayer.model.*
 import app.musicplayer.queue.QueuePlaybackPort
+import app.musicplayer.ui.artists.withArtistRevision
 import app.musicplayer.ui.components.LoadState
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -16,6 +18,7 @@ class ProfileModel(
     private val repository: ListeningRepository,
     private val player: QueuePlaybackPort,
     ownerScope: CoroutineScope,
+    private val artists: StateFlow<LoadState<ArtistDirectory>>? = null,
 ) {
     private val job = SupervisorJob(ownerScope.coroutineContext[Job])
     private val scope = CoroutineScope(ownerScope.coroutineContext + job)
@@ -39,6 +42,7 @@ class ProfileModel(
         observer?.cancel()
         observer = scope.launch {
             repository.profile
+                .withArtistRevision(artists) { it.artistRevision }
                 .catch {
                     if (it is CancellationException) throw it
                     emit(AppResult.Failure(AppError(ErrorCode.DATABASE, "profile.observe", true)))

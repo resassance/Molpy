@@ -61,7 +61,10 @@ fun TrackRow(
                     style = MaterialTheme.typography.bodyLarge,
                 )
                 Text(
-                    track.artists.joinToString { it.name }.ifBlank { "Исполнитель не указан" },
+                    trackPresentation(track)
+                        .artists
+                        .joinToString { it.name }
+                        .ifBlank { "Исполнитель не указан" },
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,

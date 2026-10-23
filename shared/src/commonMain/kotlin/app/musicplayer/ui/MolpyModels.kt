@@ -1,5 +1,7 @@
 package app.musicplayer.ui
 
+import app.musicplayer.artists.*
+import app.musicplayer.ui.artists.*
 import app.musicplayer.ui.catalog.CatalogModel
 import app.musicplayer.ui.components.TrackActions
 import app.musicplayer.ui.downloads.DownloadsModel
@@ -23,6 +25,10 @@ class MolpyModels(
     val palette: PaletteModel,
     val actions: TrackActions,
     val playbackSettings: PlaybackSettingsModel? = null,
+    val artists: ArtistDirectoryModel? = null,
+    val artistEditor: ArtistEditorModel? = null,
+    val artistMerge: ArtistMergeModel? = null,
+    val artistRepository: ArtistRepository? = null,
 ) {
     private val epoch = MutableStateFlow(0L)
     val artworkEpoch: StateFlow<Long> = epoch.asStateFlow()
@@ -31,6 +37,7 @@ class MolpyModels(
         player.networkInvalidated()
         search.networkInvalidated()
         catalog.networkInvalidated()
+        artistEditor?.networkInvalidated()
     }
 
     fun networkActivated() {
@@ -41,6 +48,9 @@ class MolpyModels(
     }
 
     fun close() {
+        artistEditor?.close()
+        artistMerge?.close()
+        artists?.close()
         player.close()
         search.close()
         library.close()

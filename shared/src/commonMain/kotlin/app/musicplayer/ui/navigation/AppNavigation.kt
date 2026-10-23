@@ -1,5 +1,6 @@
 package app.musicplayer.ui.navigation
 
+import app.musicplayer.artists.ArtistId
 import app.musicplayer.collections.PlaylistId
 import app.musicplayer.model.*
 import kotlinx.coroutines.flow.*
@@ -26,7 +27,11 @@ sealed interface AppRoute {
 
     data class Album(val ref: AlbumRef, val localKey: String? = null) : AppRoute
 
-    data class Artist(val ref: ArtistRef, val localKey: String? = null) : AppRoute
+    data class Artist(
+        val ref: ArtistRef,
+        val localKey: String? = null,
+        val artistId: ArtistId? = null,
+    ) : AppRoute
 
     data object Downloads : AppRoute
 
@@ -36,6 +41,18 @@ sealed interface AppRoute {
 }
 
 sealed interface AppOverlay {
+    data class ArtistEditor(val trackId: TrackId) : AppOverlay
+
+    data class ArtistPicker(val trackId: TrackId, val index: Int?) : AppOverlay
+
+    data class ArtistSelection(val trackId: TrackId) : AppOverlay
+
+    data class ArtistMergePicker(val artistId: ArtistId) : AppOverlay
+
+    data class ArtistMerges(val artistId: ArtistId) : AppOverlay
+
+    data object ArtistMerge : AppOverlay
+
     data object NowPlaying : AppOverlay
 
     data object Queue : AppOverlay
@@ -161,7 +178,8 @@ class AppNavigation(initial: NavigationState = NavigationState()) {
                     is AppRoute.Album ->
                         entity("album", route.ref.name, route.ref.source, route.localKey)
                     is AppRoute.Artist ->
-                        entity("artist", route.ref.name, route.ref.source, route.localKey)
+                        entity("artist", route.ref.name, route.ref.source, route.localKey) +
+                            route.artistId?.value.orEmpty()
                     AppRoute.Downloads -> listOf("downloads")
                     AppRoute.History -> listOf("history")
                     AppRoute.Settings -> listOf("settings")
@@ -180,7 +198,12 @@ class AppNavigation(initial: NavigationState = NavigationState()) {
                 "albums" -> AppRoute.Albums
                 "artists" -> AppRoute.Artists
                 "album" -> AppRoute.Album(AlbumRef(f[1], source()), f[5].ifEmpty { null })
-                "artist" -> AppRoute.Artist(ArtistRef(f[1], source()), f[5].ifEmpty { null })
+                "artist" ->
+                    AppRoute.Artist(
+                        ArtistRef(f[1], source()),
+                        f[5].ifEmpty { null },
+                        f.getOrNull(6)?.takeIf { it.isNotEmpty() }?.let(::ArtistId),
+                    )
                 "downloads" -> AppRoute.Downloads
                 "history" -> AppRoute.History
                 "settings" -> AppRoute.Settings

@@ -10,6 +10,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
 import app.musicplayer.model.*
+import app.musicplayer.ui.components.trackPresentation
 
 @Composable
 fun LyricsScreen(state: PlayerState, onClose: () -> Unit, onRetry: () -> Unit) {
@@ -49,7 +50,10 @@ fun LyricsScreen(state: PlayerState, onClose: () -> Unit, onRetry: () -> Unit) {
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        state.currentTrack?.artists.orEmpty().joinToString { it.name },
+                        state.currentTrack
+                            ?.let { trackPresentation(it).artists }
+                            .orEmpty()
+                            .joinToString { it.name },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

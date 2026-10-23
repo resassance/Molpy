@@ -1,9 +1,11 @@
 package app.musicplayer.ui.catalog
 
+import app.musicplayer.artists.*
 import app.musicplayer.catalog.*
 import app.musicplayer.collections.*
 import app.musicplayer.model.*
 import app.musicplayer.queue.QueuePlaybackPort
+import app.musicplayer.ui.artists.withArtistRevision
 import app.musicplayer.ui.components.LoadState
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -20,6 +22,8 @@ enum class CatalogPart {
 }
 
 data class CatalogScreenState(
+    val artistId: ArtistId? = null,
+    val localTracks: List<Track> = emptyList(),
     val albumRef: AlbumRef? = null,
     val artistRef: ArtistRef? = null,
     val localKey: String? = null,
@@ -40,6 +44,7 @@ class CatalogModel(
     collections: CollectionsRepository,
     private val player: QueuePlaybackPort,
     ownerScope: CoroutineScope,
+    private val artists: StateFlow<LoadState<ArtistDirectory>>? = null,
 ) {
     private val job = SupervisorJob(ownerScope.coroutineContext[Job])
     private val scope = CoroutineScope(ownerScope.coroutineContext + job)
@@ -58,6 +63,7 @@ class CatalogModel(
     init {
         scope.launch {
             collections.overview
+                .withArtistRevision(artists) { it.artistRevision }
                 .catch {
                     if (it is CancellationException) throw it
                     emit(AppResult.Failure(AppError(ErrorCode.DATABASE, "catalog.favorites", true)))
@@ -66,9 +72,26 @@ class CatalogModel(
                     when (result) {
                         is AppResult.Success -> {
                             local = result.value
-                            update {
-                                it.copy(favoriteTracks = favorites(it), collectionError = null)
-                            }
+                            val current = state.value
+                            val directory = currentDirectory()
+                            val profile =
+                                current.artistId
+                                    ?.takeIf { it in directory?.profiles.orEmpty() }
+                                    ?.let { ArtistResolver.profile(it, requireNotNull(directory)) }
+                            if (
+                                profile != null &&
+                                    (profile.id != current.artistId ||
+                                        profile.source != current.artistRef?.source)
+                            )
+                                openArtist(profile.id, current.section, force = true)
+                            else
+                                update {
+                                    applyLocal(it)
+                                        .copy(
+                                            favoriteTracks = favorites(it),
+                                            collectionError = null,
+                                        )
+                                }
                         }
                         is AppResult.Failure -> update { it.copy(collectionError = result.error) }
                     }
@@ -76,11 +99,51 @@ class CatalogModel(
         }
     }
 
+    fun localArtist(id: ArtistId) = openArtist(id, CatalogSection.ALL)
+
+    private fun openArtist(id: ArtistId, section: CatalogSection, force: Boolean = false) {
+        val directory = artists?.value?.data ?: return
+        if (id !in directory.profiles) return
+        val profile = ArtistResolver.profile(id, directory)
+        open(
+            CatalogScreenState(
+                artistId = profile.id,
+                artistRef = ArtistRef(profile.name, profile.source),
+                localKey = profile.id.value,
+                title = profile.name,
+                section = section,
+            ),
+            force = force,
+        )
+    }
+
     fun album(ref: AlbumRef, localKey: String? = null) =
         open(CatalogScreenState(albumRef = ref, localKey = localKey, title = ref.name))
 
-    fun artist(ref: ArtistRef, localKey: String? = null) =
-        open(CatalogScreenState(artistRef = ref, localKey = localKey, title = ref.name))
+    fun artist(ref: ArtistRef, localKey: String? = null) {
+        val directory = artists?.value?.data
+        val id =
+            if (directory == null) null
+            else {
+                val exact =
+                    localKey?.let(::ArtistId)?.takeIf { it in directory.profiles }
+                        ?: ref.source?.let {
+                            directory.aliases[ArtistAliasKey(ArtistResolver.sourceKey(it))]
+                        }
+                exact
+                    ?: local.artists
+                        .flatMap { it.tracks }
+                        .firstNotNullOfOrNull { track ->
+                            track.artists.indices.firstNotNullOfOrNull { index ->
+                                if (CollectionGrouping.artistKey(track, index) == localKey)
+                                    directory.aliases[ArtistResolver.alias(track, index)]
+                                else null
+                            }
+                        }
+            }
+        if (id != null) localArtist(id)
+        else open(CatalogScreenState(artistRef = ref, localKey = localKey, title = ref.name))
+    }
 
     private fun key(s: CatalogScreenState) =
         Key(s.albumRef?.source ?: s.artistRef?.source, s.localKey, s.albumRef != null)
@@ -104,9 +167,13 @@ class CatalogModel(
                         )
                     }
         val next = cached ?: target
-        mutable.value = next.copy(favoriteTracks = favorites(next))
+        mutable.value = applyLocal(next).let { it.copy(favoriteTracks = favorites(it)) }
         if (cached != null) return
         if (target.albumRef?.source == null && target.artistRef?.source == null) {
+            if (target.artistId != null) {
+                update { it.copy(tracks = LoadState(CatalogPage(emptyList(), null))) }
+                return
+            }
             update {
                 it.copy(
                     tracks =
@@ -145,8 +212,10 @@ class CatalogModel(
                             is ArtistCatalog ->
                                 update {
                                     it.copy(
-                                        artistRef = data.artist,
-                                        title = data.artist.name,
+                                        artistRef =
+                                            if (it.artistId == null) data.artist else it.artistRef,
+                                        title =
+                                            if (it.artistId == null) data.artist.name else it.title,
                                         artwork = data.artwork,
                                         tracks = LoadState(data.tracks),
                                         albums = LoadState(data.albums),
@@ -270,7 +339,7 @@ class CatalogModel(
     fun play(index: Int) {
         val tracks =
             (if (state.value.section == CatalogSection.FAVORITES) state.value.favoriteTracks
-                else state.value.tracks.data?.items.orEmpty())
+                else state.value.allTracks())
                 .toList()
         if (index !in tracks.indices) return
         val selected = generation
@@ -304,7 +373,9 @@ class CatalogModel(
                 tracks =
                     it.tracks.copy(
                         loading = false,
-                        error = AppError(ErrorCode.NETWORK, "catalog.route", true),
+                        error =
+                            if (it.artistId != null && it.artistRef?.source == null) null
+                            else AppError(ErrorCode.NETWORK, "catalog.route", true),
                     ),
                 albums = it.albums.copy(loading = false),
                 singles = it.singles.copy(loading = false),
@@ -327,6 +398,13 @@ class CatalogModel(
     }
 
     private fun favorites(s: CatalogScreenState): List<Track> {
+        if (s.artistId != null) {
+            val directory = currentDirectory() ?: return s.favoriteTracks
+            val root = ArtistResolver.root(s.artistId, directory)
+            return local.favorites.filter { track ->
+                ArtistResolver.present(track, directory).artists.any { it.id == root }
+            }
+        }
         val source = s.albumRef?.source ?: s.artistRef?.source
         if (source != null)
             return local.favorites.filter { track ->
@@ -340,6 +418,24 @@ class CatalogModel(
         return local.favorites.filter { it.id in ids }
     }
 
+    private fun currentDirectory() =
+        artists?.value?.data?.takeIf { it.revision == local.artistRevision }
+
+    private fun applyLocal(s: CatalogScreenState): CatalogScreenState {
+        val id = s.artistId ?: return s
+        val d = currentDirectory() ?: return s
+        if (id !in d.profiles) return s
+        val p = ArtistResolver.profile(id, d)
+        val tracks = local.artists.firstOrNull { it.key == p.id.value }?.tracks.orEmpty()
+        return s.copy(
+            artistId = p.id,
+            artistRef = ArtistRef(p.name, p.source),
+            title = p.name,
+            localTracks = tracks,
+            artwork = s.artwork ?: tracks.firstOrNull()?.artwork,
+        )
+    }
+
     private fun update(change: (CatalogScreenState) -> CatalogScreenState) {
         mutable.update(change)
         if (state.value.title.isNotBlank()) {
@@ -348,3 +444,6 @@ class CatalogModel(
         }
     }
 }
+
+fun CatalogScreenState.allTracks(): List<Track> =
+    (localTracks + tracks.data?.items.orEmpty()).distinctBy { it.id }

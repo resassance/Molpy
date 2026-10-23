@@ -118,9 +118,13 @@ fun LibraryScreen(
                                 style = MaterialTheme.typography.bodyMedium,
                             )
                             Text(
-                                album.tracks.firstOrNull()?.artists.orEmpty().joinToString {
-                                    it.name
-                                },
+                                album.tracks
+                                    .firstOrNull()
+                                    ?.let { trackPresentation(it).artists }
+                                    .orEmpty()
+                                    .joinToString {
+                                        it.name
+                                    },
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 style = MaterialTheme.typography.bodySmall,
