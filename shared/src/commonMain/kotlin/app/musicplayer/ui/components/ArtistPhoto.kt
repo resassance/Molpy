@@ -64,7 +64,9 @@ fun ArtistPhoto(
                 photo.kind != ArtworkKind.PLACEHOLDER &&
                 (!photo.remoteUrl.isNullOrBlank() || !photo.localKey.isNullOrBlank())
         )
-            TrackArtwork(photo, artwork, Modifier.fillMaxSize(), name)
+            TrackArtwork(photo, artwork, Modifier.fillMaxSize(), name) {
+                ArtistAvatar(name, Modifier.fillMaxSize())
+            }
         else ArtistAvatar(name, Modifier.fillMaxSize())
     }
 }

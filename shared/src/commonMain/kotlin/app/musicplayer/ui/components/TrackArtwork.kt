@@ -23,6 +23,7 @@ fun TrackArtwork(
     loader: ArtworkLoader,
     modifier: Modifier = Modifier,
     description: String? = null,
+    errorContent: (@Composable () -> Unit)? = null,
 ) {
     BoxWithConstraints(
         modifier.clip(RoundedCornerShape(6.dp)).background(MaterialTheme.colorScheme.surface),
@@ -33,21 +34,29 @@ fun TrackArtwork(
             val generation = if (artwork.localKey == null) LocalArtworkEpoch.current else 0L
             val sizePx = with(LocalDensity.current) { maxOf(maxWidth, maxHeight).roundToPx() }
             var retry by remember(data, generation) { mutableStateOf(0) }
+            var finalFailure by remember(data, generation, loader, sizePx) { mutableStateOf(false) }
             val request =
                 remember(artwork, generation, retry, loader, sizePx) {
                     loader.displayRequest(artwork, generation, retry, sizePx)
                 }
-            key(generation, retry) {
-                AsyncImage(
-                    request,
-                    description,
-                    imageLoader = loader.imageLoader,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                    onSuccess = { loader.rememberDisplayResult(artwork, generation, it.result) },
-                    onError = { if (retry == 0) retry = 1 },
-                )
-            }
+            if (finalFailure && errorContent != null) errorContent()
+            else
+                key(generation, retry) {
+                    AsyncImage(
+                        request,
+                        description,
+                        imageLoader = loader.imageLoader,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                        onSuccess = {
+                            loader.rememberDisplayResult(artwork, generation, it.result)
+                        },
+                        onError = {
+                            if (retry == 0) retry = 1
+                            else if (request.placeholderMemoryCacheKey == null) finalFailure = true
+                        },
+                    )
+                }
         } else
             Icon(
                 AppIcons.Library,

@@ -55,7 +55,7 @@ internal class BrowseMapper(
         val root = root(body)
         val sections = sections(root)
         val header = ArtistArtworkMapper.musicArtistHeader(root)
-        val artist = ref.copy(name = header?.objectOrNull("title")?.let(::text) ?: ref.name)
+        val artist = ref.copy(name = header.objectOrNull("title")?.let(::text) ?: ref.name)
         val albums = mutableListOf<AlbumCard>()
         val singles = mutableListOf<AlbumCard>()
         var albumNext: BrowseRequest? = null

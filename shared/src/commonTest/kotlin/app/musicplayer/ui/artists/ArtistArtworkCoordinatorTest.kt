@@ -62,6 +62,55 @@ class ArtistArtworkCoordinatorTest {
     private fun TestScope.coordinator(repo: Repository, source: Source) =
         ArtistArtworkCoordinator(repo, source, backgroundScope, { testScheduler.currentTime })
 
+    // A model owner may be born after invalidation and before route activation.
+    // Suspension must gate provider work, while cached local portraits remain usable.
+    @Test
+    fun unreadyNewOwnerReadsCachedLocalPhotoWithoutFetchingOrWritingRetry() = runTest {
+        val local = photo.copy(localKey = "/saved/artist.png")
+        val repo =
+            Repository().apply {
+                entries[a] = ArtistArtworkEntry(a, local, 0, 0, ArtistArtworkOutcome.AVAILABLE)
+            }
+        val source = Source().apply { action = { AppResult.Success(photo) } }
+        val model = coordinator(repo, source).apply { networkInvalidated() }
+        model.updateInterest("new-owner", linkedSetOf(a, b))
+        runCurrent()
+        assertEquals(local, model.state.value[a]?.artwork)
+        assertFalse(model.state.value.values.any { it.loading })
+        assertTrue(source.calls.isEmpty())
+        assertTrue(repo.saved.isEmpty())
+        assertNull(repo.entries[b])
+        model.networkActivated()
+        runCurrent()
+        assertEquals(setOf(a, b), source.calls.toSet())
+        assertEquals(photo, model.state.value[b]?.artwork)
+        assertTrue(repo.saved.all { it.outcome == ArtistArtworkOutcome.AVAILABLE })
+        model.close()
+    }
+
+    @Test
+    fun unreadyUncachedOwnerDoesNotCreateCooldownBeforeActivation() = runTest {
+        val repo = Repository()
+        val source =
+            Source().apply {
+                action = { AppResult.Failure(AppError(ErrorCode.NETWORK, "provider", true)) }
+            }
+        val model = coordinator(repo, source).apply { networkInvalidated() }
+        model.updateInterest("new-owner", setOf(a))
+        runCurrent()
+        assertNull(repo.entries[a])
+        assertTrue(source.calls.isEmpty())
+        model.networkActivated()
+        runCurrent()
+        assertEquals(ArtistArtworkOutcome.RETRY, repo.entries[a]?.outcome)
+        assertEquals(300_000L, repo.entries[a]?.refreshAfterMs)
+        model.networkInvalidated()
+        model.networkActivated()
+        runCurrent()
+        assertEquals(1, source.calls.size, "Actual provider failure retains its cooldown")
+        model.close()
+    }
+
     @Test
     fun visibleSourcesDeduplicateAndNeverExceedTwoRequests() = runTest {
         val repo = Repository()

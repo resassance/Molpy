@@ -22,6 +22,8 @@ class ArtistArtworkCoordinator(
         )
     private val interests = mutableMapOf<Any, Set<SourceRef>>()
     private val entries = linkedMapOf<SourceRef, ArtistArtworkEntry>()
+    // Includes misses, so an unready route performs one local read per visible key.
+    private val locallyRead = mutableSetOf<SourceRef>()
     private val running = mutableMapOf<SourceRef, Job>()
     private val tokens = mutableMapOf<SourceRef, Any>()
     private val mutableState = MutableStateFlow<Map<SourceRef, ArtistArtworkState>>(emptyMap())
@@ -96,6 +98,7 @@ class ArtistArtworkCoordinator(
     private fun reconcile() {
         if (closed) return
         val visible = wanted()
+        locallyRead.retainAll(visible)
         mutableState.value = mutableState.value.filterKeys { it in visible }
         running.toMap().forEach { (key, job) ->
             if (key !in visible) {
@@ -104,7 +107,6 @@ class ArtistArtworkCoordinator(
                 publish(key, state.value[key]?.artwork, false)
             }
         }
-        if (!enabled) return
         for (key in visible) {
             if (running.size >= 2) break
             if (key in running) continue
@@ -113,7 +115,7 @@ class ArtistArtworkCoordinator(
                 publish(key, cached.artwork, false)
                 continue
             }
-            start(key)
+            if (enabled || key !in locallyRead) start(key)
         }
     }
 
@@ -121,8 +123,7 @@ class ArtistArtworkCoordinator(
         val token = Any()
         tokens[key] = token
         val generation = epoch
-        fun current() =
-            !closed && enabled && generation == epoch && tokens[key] === token && key in wanted()
+        fun current() = !closed && generation == epoch && tokens[key] === token && key in wanted()
         val job =
             scope.launch(start = CoroutineStart.LAZY) {
                 try {
@@ -133,8 +134,10 @@ class ArtistArtworkCoordinator(
                         if (cached != null) put(cached)
                     }
                     if (!current()) return@launch
+                    locallyRead += key
                     publish(key, cached?.artwork, false)
                     if (cached != null && cached.refreshAfterMs > nowMs()) return@launch
+                    if (!enabled) return@launch
                     publish(key, cached?.artwork, true)
                     val result = source.fetch(key)
                     currentCoroutineContext().ensureActive()

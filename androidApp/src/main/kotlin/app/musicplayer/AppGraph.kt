@@ -255,12 +255,15 @@ class AppGraph(private val context: Context) {
         val directory = ArtistDirectoryModel(artists, ownerScope)
         val artistArtwork =
             ArtistArtworkCoordinator(
-                artistArtworkRepository,
-                artistArtworkSource,
-                ownerScope,
-                System::currentTimeMillis,
-                diagnostics::record,
-            )
+                    artistArtworkRepository,
+                    artistArtworkSource,
+                    ownerScope,
+                    System::currentTimeMillis,
+                    diagnostics::record,
+                )
+                .apply {
+                    if (!network.context.value.ready) networkInvalidated()
+                }
         return MolpyModels(
                 PlayerModel(player, library, lyrics, ownerScope),
                 SearchModel(musicSearch, player, ownerScope, artistArtwork::remember),
