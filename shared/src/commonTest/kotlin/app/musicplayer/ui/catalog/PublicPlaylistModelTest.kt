@@ -11,6 +11,47 @@ import kotlinx.coroutines.test.*
 @OptIn(ExperimentalCoroutinesApi::class)
 class PublicPlaylistModelTest {
     @Test
+    fun shuffleSendsAllKnownOccurrencesAndCursorInOneSourceRequest() = runTest {
+        val rows = listOf(row(0, null, true), row(1), row(2), row(3, b))
+        val browse =
+            object : Browse() {
+                override suspend fun playlist(ref: PublicPlaylistRef, refresh: Boolean) =
+                    AppResult.Success(catalog(ref, rows, next))
+            }
+        val player = Player()
+        val model = PublicPlaylistModel(browse, player, backgroundScope)
+        model.playShuffled()
+        model.open(ref)
+        runCurrent()
+        model.playShuffled()
+        runCurrent()
+        val request = player.requests.single()
+        assertTrue(request.shuffle)
+        assertEquals(rows, request.rows)
+        assertEquals(next, request.next)
+        assertEquals(ref, request.ref)
+        assertTrue(player.commands.isEmpty())
+        model.close()
+    }
+
+    @Test
+    fun shuffleDoesNothingWhenEveryKnownOccurrenceIsUnavailable() = runTest {
+        val browse =
+            object : Browse() {
+                override suspend fun playlist(ref: PublicPlaylistRef, refresh: Boolean) =
+                    AppResult.Success(catalog(ref, listOf(row(0, null, true))))
+            }
+        val player = Player()
+        val model = PublicPlaylistModel(browse, player, backgroundScope)
+        model.open(ref)
+        runCurrent()
+        model.playShuffled()
+        runCurrent()
+        assertTrue(player.requests.isEmpty())
+        model.close()
+    }
+
+    @Test
     fun reopeningChangedPlaylistReadsFreshHeadAndDoesNotReplacePlayingQueue() = runTest {
         val refreshes = mutableListOf<Boolean>()
         val browse =

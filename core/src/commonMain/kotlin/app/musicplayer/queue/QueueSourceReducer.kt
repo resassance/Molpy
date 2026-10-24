@@ -11,10 +11,14 @@ internal object QueueSourceReducer {
             return result.copy(
                 snapshot =
                     result.snapshot.copy(
+                        shuffleEnabled = false,
                         source =
                             source.copy(
-                                shuffleRequested = source.shuffleRequested || q.shuffleEnabled
-                            )
+                                shuffleRequested =
+                                    source.shuffleRequested ||
+                                        q.shuffleEnabled ||
+                                        command.shuffleEnabled == true
+                            ),
                     )
             )
         }

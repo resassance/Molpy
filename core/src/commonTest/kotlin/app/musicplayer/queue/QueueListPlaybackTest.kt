@@ -11,6 +11,81 @@ import kotlinx.coroutines.test.*
 @OptIn(ExperimentalCoroutinesApi::class)
 class QueueListPlaybackTest {
     @Test
+    fun shuffledStartPreservesOccurrencesAndRandomizesTheInitialSelection() = runTest {
+        val selected = mutableSetOf<Int>()
+        repeat(24) { seed ->
+            val engine = Engine()
+            val tracks = mutableMapOf<TrackId, Track>()
+            val queue = queue(backgroundScope, engine, tracks, kotlin.random.Random(seed))
+            val commands =
+                QueuePlaybackCommands(queue) {
+                    tracks[it.id] = it
+                    AppResult.Success(Unit)
+                }
+            assertIs<AppResult.Success<Unit>>(commands.playShuffledList(listOf(a, b, a, b)))
+            val state = queue.state.value
+            assertTrue(state.shuffleEnabled)
+            assertEquals(listOf(a.id, b.id, a.id, b.id), state.entries.map { it.trackId })
+            assertEquals(4, state.entries.map { it.id }.toSet().size)
+            selected += state.entries.indexOfFirst { it.id == state.currentEntryId }
+            assertEquals(
+                state.entries.map { it.id }.toSet(),
+                (QueueOrder.upcoming(state).map { it.id } + state.currentEntryId!!).toSet(),
+            )
+            assertEquals(3, QueueOrder.upcoming(state).size)
+            assertEquals(1, engine.loads)
+        }
+        assertTrue(selected.size > 1)
+        assertTrue(selected.any { it > 0 })
+    }
+
+    @Test
+    fun shuffledMetadataFailureAndEmptyInputLeavePlaybackUntouched() = runTest {
+        val engine = Engine()
+        val tracks = mutableMapOf<TrackId, Track>(a.id to a)
+        val queue = queue(backgroundScope, engine, tracks)
+        val commands = QueuePlaybackCommands(queue) { AppResult.Success(Unit) }
+        commands.playList(listOf(a), 0)
+        val before = queue.state.value
+        val failed =
+            QueuePlaybackCommands(queue) {
+                AppResult.Failure(AppError(ErrorCode.DATABASE, "fixture", true))
+            }
+        assertEquals(ErrorCode.DATABASE, failed.playShuffledList(listOf(b)).errorOrNull()?.code)
+        assertEquals(
+            ErrorCode.INVALID_CONFIG,
+            commands.playShuffledList(emptyList()).errorOrNull()?.code,
+        )
+        assertEquals(before, queue.state.value)
+        assertEquals(1, engine.loads)
+    }
+
+    @Test
+    fun lateShuffledMetadataCannotReplaceANewerIndexedPlay() = runTest {
+        val engine = Engine()
+        val tracks = mutableMapOf<TrackId, Track>()
+        val queue = queue(backgroundScope, engine, tracks)
+        val gate = CompletableDeferred<Unit>()
+        val commands =
+            QueuePlaybackCommands(
+                queue,
+                { fail("Expected batch") },
+                { batch ->
+                    if (batch.first().id == a.id) withContext(NonCancellable) { gate.await() }
+                    batch.forEach { tracks[it.id] = it }
+                    AppResult.Success(Unit)
+                },
+            )
+        val old = launch { commands.playShuffledList(listOf(a, a)) }
+        runCurrent()
+        commands.playList(listOf(b), 0)
+        gate.complete(Unit)
+        old.join()
+        assertEquals(listOf(b.id), queue.state.value.entries.map { it.trackId })
+        assertEquals(b.id, engine.snapshot.value.track?.id)
+    }
+
+    @Test
     fun aLateMetadataBatchCannotReplaceANewerSelection() = runTest {
         val engine = Engine()
         val tracks = mutableMapOf<TrackId, Track>()
@@ -359,6 +434,7 @@ class QueueListPlaybackTest {
         scope: CoroutineScope,
         engine: Engine,
         tracks: Map<TrackId, Track>,
+        random: kotlin.random.Random = kotlin.random.Random.Default,
     ): QueueController {
         val resolver =
             object : PlaybackResolver {
@@ -379,10 +455,9 @@ class QueueListPlaybackTest {
                     )
             }
         val coordinator = PlaybackCoordinator(engine, resolver, { network }, scope)
-        return QueueController(engine, coordinator) { tracks[it] }
-            .also { queue ->
-                scope.launch { coordinator.snapshot.collect { queue.onPlayback(it) } }
-            }
+        return QueueController(engine, coordinator, { tracks[it] }, random).also { queue ->
+            scope.launch { coordinator.snapshot.collect { queue.onPlayback(it) } }
+        }
     }
 
     private class Engine : PlayerEngine {

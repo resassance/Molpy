@@ -38,24 +38,47 @@ class QueuePlaybackCommands(
         }
     }
 
-    suspend fun playList(tracks: List<Track>, startIndex: Int): AppResult<Unit> {
+    internal suspend fun playSourceList(
+        tracks: List<Track>,
+        entries: List<QueueEntry>,
+        currentEntryId: QueueEntryId,
+        source: QueueSourceState,
+        isCurrent: () -> Boolean,
+    ): AppResult<Unit> {
+        currentCoroutineContext().ensureActive()
+        if (!isCurrent()) throw CancellationException("Superseded playlist request")
+        invalidateQueue()
+        val selected = generation
+        val saved = rememberTracks(tracks, selected)
+        if (!isCurrent()) throw CancellationException("Superseded playlist request")
+        if (saved is AppResult.Failure) return saved
+        return queue.replace(entries, currentEntryId, source, shuffleEnabled = true) {
+            selected == generation && isCurrent()
+        }
+    }
+
+    suspend fun playList(tracks: List<Track>, startIndex: Int): AppResult<Unit> =
+        installList(tracks, startIndex, shuffleEnabled = null)
+
+    suspend fun playShuffledList(tracks: List<Track>): AppResult<Unit> =
+        installList(tracks, 0, shuffleEnabled = true)
+
+    private suspend fun installList(
+        tracks: List<Track>,
+        startIndex: Int,
+        shuffleEnabled: Boolean?,
+    ): AppResult<Unit> {
         if (startIndex !in tracks.indices)
             return AppResult.Failure(AppError(ErrorCode.INVALID_CONFIG, "queue.list", false))
         invalidateQueue()
         val selected = generation
         val frozen = tracks.toList()
-        if (rememberList != null) {
-            val result = rememberList.invoke(frozen)
-            checkCurrent(selected)
-            if (result is AppResult.Failure) return result
-        } else
-            for (track in frozen) {
-                val result = remember(track)
-                checkCurrent(selected)
-                if (result is AppResult.Failure) return result
-            }
+        val saved = rememberTracks(frozen, selected)
+        if (saved is AppResult.Failure) return saved
         val entries = frozen.map { QueueEntry(QueueEntryId(Uuid.random().toString()), it.id) }
-        return queue.replace(entries, entries[startIndex].id) { selected == generation }
+        return queue.replace(entries, entries[startIndex].id, shuffleEnabled = shuffleEnabled) {
+            selected == generation
+        }
     }
 
     suspend fun enqueue(
@@ -107,6 +130,20 @@ class QueuePlaybackCommands(
     fun invalidateQueue() {
         invalidatePending()
         insertions.invalidate()
+    }
+
+    private suspend fun rememberTracks(tracks: List<Track>, selected: Long): AppResult<Unit> {
+        if (rememberList != null) {
+            val result = rememberList.invoke(tracks)
+            checkCurrent(selected)
+            return result
+        }
+        for (track in tracks) {
+            val result = remember(track)
+            checkCurrent(selected)
+            if (result is AppResult.Failure) return result
+        }
+        return AppResult.Success(Unit)
     }
 
     private suspend fun checkCurrent(selected: Long) {

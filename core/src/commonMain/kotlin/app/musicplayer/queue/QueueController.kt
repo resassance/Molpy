@@ -99,13 +99,22 @@ class QueueController(
         entries: List<QueueEntry>,
         currentEntryId: QueueEntryId,
         source: QueueSourceState? = null,
+        shuffleEnabled: Boolean? = null,
         isCurrent: () -> Boolean = { true },
     ): AppResult<Unit> =
         try {
-            transition(QueueCommand.Replace(entries, currentEntryId, source), isCurrent = isCurrent)
+            val selected =
+                if (shuffleEnabled == true && source == null) entries[randomIndex(entries.size)].id
+                else currentEntryId
+            transition(
+                QueueCommand.Replace(entries, selected, source, shuffleEnabled),
+                isCurrent = isCurrent,
+            )
         } catch (_: IllegalArgumentException) {
             AppResult.Failure(AppError(ErrorCode.INVALID_CONFIG, "queue.replace", false))
         }
+
+    internal fun randomIndex(size: Int): Int = random.nextInt(size)
 
     /**
      * Bridge for the existing PlaybackPort: remember metadata in the service lookup before calling.

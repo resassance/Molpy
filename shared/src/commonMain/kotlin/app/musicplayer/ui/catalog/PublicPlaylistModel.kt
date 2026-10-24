@@ -121,7 +121,19 @@ class PublicPlaylistModel(
     }
 
     /** Ordinals identify occurrences, including unavailable rows and repeated TrackIds. */
-    fun play(ordinal: Int) {
+    fun play(ordinal: Int) = startPlayback(ordinal, shuffle = false)
+
+    fun playShuffled() {
+        val ordinal =
+            state.value.tracks.data
+                ?.items
+                ?.firstOrNull { !it.unavailable && it.track != null }
+                ?.identity
+                ?.ordinal ?: return
+        startPlayback(ordinal, shuffle = true)
+    }
+
+    private fun startPlayback(ordinal: Int, shuffle: Boolean) {
         val current = state.value
         if (networkRefreshPending || current.tracks.loading) return
         val ref = current.ref ?: return
@@ -130,7 +142,8 @@ class PublicPlaylistModel(
         if (occurrence.unavailable || occurrence.track == null) return
         val selected = generation
         val command = ++commandGeneration
-        val playback = PlaylistPlaybackRequest(ref, page.items.toList(), ordinal, page.next)
+        val playback =
+            PlaylistPlaybackRequest(ref, page.items.toList(), ordinal, page.next, shuffle)
         update { it.copy(commandError = null) }
         scope.launch {
             val result = attempt("playlist.play") { player.playPublicPlaylist(playback) }

@@ -7,4 +7,5 @@ data class PlaylistPlaybackRequest(
     val rows: List<PlaylistOccurrence>,
     val selectedOrdinal: Int,
     val next: CatalogCursor?,
+    val shuffle: Boolean = false,
 )

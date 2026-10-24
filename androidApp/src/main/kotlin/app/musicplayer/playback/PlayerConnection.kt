@@ -103,6 +103,11 @@ class PlayerConnection(private val application: MusicApplication) :
         return withHost { it.playList(tracks, startIndex) }
     }
 
+    override suspend fun playShuffledList(tracks: List<Track>): AppResult<Unit> {
+        withContext(Dispatchers.Main.immediate) { insertions.invalidate() }
+        return withHost { it.playShuffledList(tracks) }
+    }
+
     override suspend fun playPublicPlaylist(request: PlaylistPlaybackRequest): AppResult<Unit> {
         withContext(Dispatchers.Main.immediate) { insertions.invalidate() }
         return withHost { it.playPublicPlaylist(request) }

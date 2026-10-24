@@ -9,6 +9,54 @@ import kotlinx.coroutines.test.*
 @OptIn(ExperimentalCoroutinesApi::class)
 class QueuePlaylistLoaderTest {
     @Test
+    fun shuffledSourceKeepsAllSeedOccurrencesAndResumesAfterPageFailure() = runTest {
+        // Select playable index 1: ordinal 2 is a distinct occurrence of the same TrackId.
+        val random =
+            object : kotlin.random.Random() {
+                override fun nextBits(bitCount: Int): Int = if (bitCount == 0) 0 else 1
+            }
+        val h = QueuePlaylistTestFixture(backgroundScope, random)
+        val gate = CompletableDeferred<Unit>()
+        val failure = AppError(ErrorCode.NETWORK, "fixture.page", false)
+        h.catalog.read = {
+            gate.await()
+            AppResult.Failure(failure)
+        }
+        val original = h.request(listOf("a", "hidden", "a", "b", "c"), next = "tail")
+        val rows =
+            original.rows.mapIndexed { index, row ->
+                if (index == 1) row.copy(track = null, unavailable = true) else row
+            }
+        assertIs<AppResult.Success<Unit>>(h.loader.play(original.copy(rows = rows, shuffle = true)))
+        runCurrent()
+        val initial = h.playback.queue.state.value
+        assertEquals(listOf("a", "a", "b", "c"), initial.entries.map { it.trackId.value })
+        assertEquals(4, initial.entries.map { it.id }.toSet().size)
+        assertEquals(rows.map { it.identity }, initial.source!!.acceptedRows)
+        assertTrue(initial.source!!.selectedOrdinal > 0)
+        val selected = rows[initial.source!!.selectedOrdinal].track!!.id
+        assertEquals(selected, h.playback.engine.snapshot.value.track!!.id)
+        assertEquals(3, h.future().size)
+        assertTrue(initial.source!!.shuffleRequested)
+        assertFalse(initial.shuffleEnabled)
+        val initialIds = initial.entries.map { it.id }
+        gate.complete(Unit)
+        runCurrent()
+        assertEquals(failure, h.playback.queue.state.value.source!!.error)
+        h.catalog.read = { AppResult.Success(h.page(5, listOf("tail"))) }
+        assertIs<AppResult.Success<Unit>>(h.loader.retry())
+        runCurrent()
+        val complete = h.playback.queue.state.value
+        assertEquals(QueueSourcePhase.COMPLETE, complete.source!!.phase)
+        assertTrue(complete.shuffleEnabled)
+        assertEquals(initialIds, complete.entries.take(4).map { it.id })
+        assertEquals(listOf("a", "a", "b", "c", "tail"), complete.entries.map { it.trackId.value })
+        assertEquals(6, complete.source!!.acceptedRows.size)
+        assertEquals(4, h.future().size)
+        assertEquals(2, h.catalog.calls)
+    }
+
+    @Test
     fun completedPageSaveRetryAfterRuntimeResetDoesNotNeedNetwork() = runTest {
         val h = QueuePlaylistTestFixture(backgroundScope)
         h.failCommit = true

@@ -6,8 +6,11 @@ import app.musicplayer.model.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ensureActive
 
-internal class QueuePlaylistTestFixture(scope: CoroutineScope) {
-    val playback = PlaylistQueueFixture(scope).also { it.tracks.clear() }
+internal class QueuePlaylistTestFixture(
+    scope: CoroutineScope,
+    random: kotlin.random.Random = kotlin.random.Random.Default,
+) {
+    val playback = PlaylistQueueFixture(scope, random).also { it.tracks.clear() }
     val ref = PublicPlaylistRef("Mix", SourceRef("youtube", "playlist", "PLtest"))
     var beforeRemember: suspend (List<Track>) -> Unit = {}
     var beforeRememberOne: suspend (Track) -> Unit = {}

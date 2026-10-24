@@ -25,6 +25,26 @@ class QueueShuffleTest {
     private fun upcoming(q: QueueSnapshot) = QueueOrder.upcoming(q).map { it.id }
 
     @Test
+    fun explicitShuffledReplacementKeepsThePrefixAndEveryOccurrence() {
+        val duplicate = entry("other-a", "a")
+        val entries = listOf(a, b, duplicate, c)
+        val result =
+            QueueReducer.reduce(
+                    QueueSnapshot(),
+                    QueueCommand.Replace(entries, duplicate.id, shuffleEnabled = true),
+                    Random(42),
+                )
+                .snapshot
+        assertEquals(entries, result.entries)
+        assertEquals(duplicate.id, result.currentEntryId)
+        assertTrue(result.shuffleEnabled)
+        assertEquals(setOf(a.id, b.id, c.id), upcoming(result).toSet())
+        assertEquals(3, upcoming(result).size)
+        assertTrue(result.traversal!!.history.isEmpty())
+        assertTrue(result.traversal!!.priority.isEmpty())
+    }
+
+    @Test
     fun togglePreservesCurrentPlaybackAndCanonicalOrder() {
         val before = start(a, b, c, d, e, at = b).copy(positionMs = 4321, playWhenReady = false)
         val after = step(before, QueueCommand.ToggleShuffle)

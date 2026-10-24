@@ -13,6 +13,11 @@ interface QueuePlaybackPort : PlaybackPort {
 
     suspend fun playList(tracks: List<Track>, startIndex: Int): AppResult<Unit>
 
+    suspend fun playShuffledList(tracks: List<Track>): AppResult<Unit> =
+        AppResult.Failure(
+            AppError(ErrorCode.SOURCE_UNAVAILABLE, "queue.shuffle.unsupported", false)
+        )
+
     suspend fun playPublicPlaylist(request: PlaylistPlaybackRequest): AppResult<Unit> =
         AppResult.Failure(AppError(ErrorCode.SOURCE_UNAVAILABLE, "queue.source.unsupported", false))
 

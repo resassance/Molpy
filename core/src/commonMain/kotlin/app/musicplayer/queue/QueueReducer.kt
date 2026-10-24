@@ -10,6 +10,7 @@ sealed interface QueueCommand {
         val entries: List<QueueEntry>,
         val currentEntryId: QueueEntryId,
         val source: QueueSourceState? = null,
+        val shuffleEnabled: Boolean? = null,
     ) : QueueCommand
 
     data class AppendSourcePage(
@@ -128,17 +129,22 @@ object QueueReducer {
                 )
                 val index = command.entries.indexOfFirst { it.id == command.currentEntryId }
                 require(index >= 0)
-                val remaining = command.entries.drop(index + 1).map { it.id }
+                val remaining =
+                    if (command.shuffleEnabled == true)
+                        command.entries.filterNot { it.id == command.currentEntryId }.map { it.id }
+                    else command.entries.drop(index + 1).map { it.id }
+                val shuffle = command.shuffleEnabled ?: q.shuffleEnabled
                 QueueTransition(
                     QueueSnapshot(
                         command.entries.toList(),
                         command.currentEntryId,
                         0,
                         true,
-                        q.shuffleEnabled,
+                        shuffle,
                         QueueTraversal(
                             upcoming =
-                                if (q.shuffleEnabled) remaining.shuffled(random) else remaining
+                                if (shuffle && command.source == null) remaining.shuffled(random)
+                                else remaining
                         ),
                     )
                 )

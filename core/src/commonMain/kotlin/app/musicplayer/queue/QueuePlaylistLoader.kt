@@ -82,7 +82,11 @@ class QueuePlaylistLoader(
 
     suspend fun play(request: PlaylistPlaybackRequest): AppResult<Unit> {
         if (closed) return unavailable()
-        val selected = request.rows.getOrNull(request.selectedOrdinal)
+        val playable = request.rows.filter { it.track != null && !it.unavailable }
+        val selected =
+            if (request.shuffle)
+                playable.takeIf { it.isNotEmpty() }?.let { it[queue.randomIndex(it.size)] }
+            else request.rows.getOrNull(request.selectedOrdinal)
         if (
             request.rows.withIndex().any { it.value.identity.ordinal != it.index } ||
                 selected?.track == null ||
@@ -94,7 +98,8 @@ class QueuePlaylistLoader(
             )
         val generation = ++requestGeneration
         val sessionId = Uuid.random().toString()
-        val frozen = request.copy(rows = request.rows.toList())
+        val frozen =
+            request.copy(rows = request.rows.toList(), selectedOrdinal = selected.identity.ordinal)
         return scope
             .async {
                 if (closed || generation != requestGeneration)
@@ -106,15 +111,34 @@ class QueuePlaylistLoader(
                             sessionId,
                             frozen.ref,
                             frozen.selectedOrdinal,
-                            frozen.rows.take(frozen.selectedOrdinal + 1).map { it.identity },
+                            (if (frozen.shuffle) frozen.rows
+                                else frozen.rows.take(frozen.selectedOrdinal + 1))
+                                .map { it.identity },
+                            shuffleRequested = frozen.shuffle,
                         )
-                    commands.playSource(
-                        selected.track,
-                        QueueEntry(QueueEntryId(Uuid.random().toString()), selected.track.id),
-                        source,
-                    ) {
-                        !closed && generation == requestGeneration
-                    }
+                    if (frozen.shuffle) {
+                        val entries = playable.map { row ->
+                            QueueEntry(
+                                QueueEntryId(Uuid.random().toString()),
+                                requireNotNull(row.track).id,
+                            )
+                        }
+                        commands.playSourceList(
+                            playable.map { requireNotNull(it.track) },
+                            entries,
+                            entries[playable.indexOf(selected)].id,
+                            source,
+                        ) {
+                            !closed && generation == requestGeneration
+                        }
+                    } else
+                        commands.playSource(
+                            selected.track,
+                            QueueEntry(QueueEntryId(Uuid.random().toString()), selected.track.id),
+                            source,
+                        ) {
+                            !closed && generation == requestGeneration
+                        }
                 } finally {
                     if (queue.state.value.source?.sessionId != sessionId) seeds.remove(sessionId)
                 }

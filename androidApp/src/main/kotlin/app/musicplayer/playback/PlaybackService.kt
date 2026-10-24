@@ -53,6 +53,14 @@ class PlaybackService : MediaSessionService() {
                         }
                         .await()
 
+                override suspend fun playShuffledList(tracks: List<Track>): AppResult<Unit> =
+                    scope
+                        .async {
+                            runtime.startup.await()
+                            commands.playShuffledList(tracks)
+                        }
+                        .await()
+
                 override suspend fun playPublicPlaylist(
                     request: PlaylistPlaybackRequest
                 ): AppResult<Unit> =

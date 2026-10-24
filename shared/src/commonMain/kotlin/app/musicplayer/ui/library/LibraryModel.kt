@@ -84,6 +84,12 @@ class LibraryModel(
         scope.launch { command { player.playList(frozen, index) } }
     }
 
+    fun playShuffled(tracks: List<Track>) {
+        val frozen = tracks.toList()
+        if (frozen.isEmpty()) return
+        scope.launch { command { player.playShuffledList(frozen) } }
+    }
+
     private suspend fun <T> command(action: suspend () -> AppResult<T>): AppResult<T> {
         val selected = ++generation
         val result =

@@ -6,7 +6,10 @@ import app.musicplayer.playback.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 
-internal class PlaylistQueueFixture(scope: CoroutineScope) {
+internal class PlaylistQueueFixture(
+    scope: CoroutineScope,
+    random: kotlin.random.Random = kotlin.random.Random.Default,
+) {
     val tracks =
         listOf("a", "b", "c", "tail", "n1", "n2")
             .associate { TrackId(it) to Fixtures.track(it, sourceId = it) }
@@ -40,7 +43,7 @@ internal class PlaylistQueueFixture(scope: CoroutineScope) {
             { NetworkContext(0, NetworkConfig(NetworkMode.SYSTEM, null, null), true, true) },
             scope,
         )
-    val queue = QueueController(engine, coordinator) { tracks[it] }
+    val queue = QueueController(engine, coordinator, { tracks[it] }, random)
 
     init {
         scope.launch { coordinator.snapshot.collect { queue.onPlayback(it) } }
