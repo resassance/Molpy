@@ -65,7 +65,7 @@ class PlaylistQueueMigrationTest {
             BundledSQLiteDriver().open(path).use { c ->
                 c.prepare("PRAGMA user_version").use {
                     it.step()
-                    assertEquals(7L, it.getLong(0))
+                    assertEquals(8L, it.getLong(0))
                 }
                 c.prepare("SELECT name FROM artists WHERE id='artist'").use {
                     assertTrue(it.step())

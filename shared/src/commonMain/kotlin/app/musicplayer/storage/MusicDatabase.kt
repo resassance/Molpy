@@ -6,6 +6,7 @@ import androidx.room.*
     entities =
         [
             TrackRecord::class,
+            ArtistArtworkRecord::class,
             AudioMetadataRecord::class,
             ExternalIdentityRecord::class,
             CandidateRecord::class,
@@ -28,7 +29,7 @@ import androidx.room.*
             ArtistMergeRecord::class,
             SessionArtistRecord::class,
         ],
-    version = 7,
+    version = 8,
     exportSchema = true,
 )
 @ConstructedBy(MusicDatabaseConstructor::class)
@@ -42,6 +43,8 @@ abstract class MusicDatabase : RoomDatabase() {
     abstract fun collectionDao(): CollectionDao
 
     abstract fun artistDao(): ArtistDao
+
+    abstract fun artistArtworkDao(): ArtistArtworkDao
 
     abstract fun listeningDao(): ListeningDao
 }

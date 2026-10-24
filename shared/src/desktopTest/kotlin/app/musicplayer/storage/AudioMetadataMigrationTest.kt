@@ -198,7 +198,7 @@ class AudioMetadataMigrationTest {
                     }
                 connection.prepare("PRAGMA user_version").use {
                     assertTrue(it.step())
-                    assertEquals(7L, it.getLong(0))
+                    assertEquals(8L, it.getLong(0))
                 }
             }
         } finally {
