@@ -33,7 +33,7 @@ fun QueueSheet(
     ModalBottomSheet(
         onDismissRequest = onClose,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
     ) {
         Column(
             Modifier.fillMaxWidth()

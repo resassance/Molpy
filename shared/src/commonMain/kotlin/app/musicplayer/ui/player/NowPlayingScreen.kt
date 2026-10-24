@@ -1,14 +1,12 @@
 package app.musicplayer.ui.player
 
 import androidx.compose.foundation.*
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
 import androidx.compose.ui.graphics.*
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.*
@@ -18,6 +16,8 @@ import app.musicplayer.artwork.ArtworkLoader
 import app.musicplayer.model.*
 import app.musicplayer.ui.components.*
 import app.musicplayer.ui.present
+import app.musicplayer.ui.theme.ArtworkAmbientBackground
+import app.musicplayer.ui.theme.LocalArtworkColors
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -40,16 +40,8 @@ fun NowPlayingScreen(
     val colors = MaterialTheme.colorScheme
     val track = state.currentTrack
     PlayerSheet(visible, gesturesEnabled, onClose) { dragHandle ->
-        BoxWithConstraints(
-            Modifier.fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        listOf(colors.primary.copy(alpha = 0.19f), colors.background)
-                    )
-                )
-                .safeDrawingPadding()
-                .testTag("now-playing")
-        ) {
+        BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding().testTag("now-playing")) {
+            ArtworkAmbientBackground(LocalArtworkColors.current, Modifier.matchParentSize())
             Column(Modifier.fillMaxSize()) {
                 Row(
                     dragHandle.fillMaxWidth().height(56.dp).padding(horizontal = 8.dp),
@@ -57,10 +49,10 @@ fun NowPlayingScreen(
                 ) {
                     IconButton(onClose) { Icon(AppIcons.Down, "Свернуть плеер") }
                     Text(
-                        "СЕЙЧАС ИГРАЕТ",
+                        "Сейчас играет",
                         Modifier.weight(1f),
-                        style = MaterialTheme.typography.bodySmall,
-                        letterSpacing = 2.sp,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = colors.onSurfaceVariant,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                     )
                     IconButton({ track?.let(onMenu) }, enabled = track != null) {
@@ -82,6 +74,7 @@ fun NowPlayingScreen(
                         )
                     PlayerBody(
                         modifier = Modifier.weight(1f).fillMaxWidth(),
+                        entryKey = state.snapshot.current?.id ?: track.id,
                         artwork = {
                             BoxWithConstraints(Modifier.fillMaxWidth()) {
                                 val cover =
@@ -103,7 +96,7 @@ fun NowPlayingScreen(
                             Column(
                                 Modifier.widthIn(max = 520.dp)
                                     .fillMaxWidth()
-                                    .padding(horizontal = 24.dp, vertical = 8.dp)
+                                    .padding(horizontal = 24.dp, vertical = 4.dp)
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     TrackChangeContent(
@@ -114,7 +107,11 @@ fun NowPlayingScreen(
                                         Column(Modifier.fillMaxWidth()) {
                                             Text(
                                                 shown.track.title,
-                                                style = MaterialTheme.typography.headlineMedium,
+                                                style =
+                                                    MaterialTheme.typography.headlineMedium.copy(
+                                                        fontSize = 26.sp,
+                                                        lineHeight = 30.sp,
+                                                    ),
                                                 minLines = 2,
                                                 maxLines = 2,
                                                 overflow = TextOverflow.Ellipsis,
@@ -123,22 +120,30 @@ fun NowPlayingScreen(
                                                 trackPresentation(shown.track).artists
                                             Text(
                                                 artistCredits.joinToString { it.name },
-                                                Modifier.clickable(
-                                                    enabled = active && artistCredits.isNotEmpty()
-                                                ) {
-                                                    if (onArtists != null) onArtists(shown.track)
-                                                    else
-                                                        shown.track.artists
-                                                            .firstOrNull()
-                                                            ?.let(onArtist)
-                                                },
+                                                Modifier.fillMaxWidth()
+                                                    .heightIn(min = 48.dp)
+                                                    .clickable(
+                                                        enabled =
+                                                            active && artistCredits.isNotEmpty()
+                                                    ) {
+                                                        if (onArtists != null)
+                                                            onArtists(shown.track)
+                                                        else
+                                                            shown.track.artists
+                                                                .firstOrNull()
+                                                                ?.let(onArtist)
+                                                    }
+                                                    .wrapContentHeight(),
                                                 style = MaterialTheme.typography.bodyLarge,
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis,
                                             )
                                         }
                                     }
-                                    IconButton(onFavorite, Modifier.size(48.dp)) {
+                                    IconButton(
+                                        onFavorite,
+                                        Modifier.size(48.dp).align(Alignment.Top),
+                                    ) {
                                         Icon(
                                             if (favorite) AppIcons.HeartFilled else AppIcons.Heart,
                                             if (favorite) "Убрать из избранного" else "В избранное",
@@ -155,11 +160,12 @@ fun NowPlayingScreen(
                                     val album = shown.track.album
                                     Text(
                                         album?.name.orEmpty(),
-                                        Modifier.clickable(
-                                            enabled = active && album?.source != null
-                                        ) {
-                                            album?.let(onAlbum)
-                                        },
+                                        Modifier.fillMaxWidth()
+                                            .heightIn(min = 48.dp)
+                                            .clickable(enabled = active && album?.source != null) {
+                                                album?.let(onAlbum)
+                                            }
+                                            .wrapContentHeight(),
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = colors.onSurfaceVariant,
                                         minLines = 1,
@@ -177,7 +183,10 @@ fun NowPlayingScreen(
                                     )
                                 }
                                 BoxWithConstraints(
-                                    Modifier.fillMaxWidth().height(84.dp).padding(top = 12.dp)
+                                    Modifier.fillMaxWidth()
+                                        .height(76.dp)
+                                        .padding(top = 4.dp)
+                                        .testTag("player-transport")
                                 ) {
                                     val navigationSize = if (maxWidth < 280.dp) 48.dp else 56.dp
                                     Row(
@@ -210,6 +219,11 @@ fun NowPlayingScreen(
                                                 model::playPause,
                                                 Modifier.size(72.dp),
                                                 shape = CircleShape,
+                                                colors =
+                                                    IconButtonDefaults.filledIconButtonColors(
+                                                        containerColor = colors.onSurface,
+                                                        contentColor = colors.surface,
+                                                    ),
                                             ) {
                                                 Icon(
                                                     if (active) AppIcons.Pause else AppIcons.Play,
@@ -335,74 +349,7 @@ fun NowPlayingScreen(
                             }
                         },
                     )
-                    Box(
-                        Modifier.fillMaxWidth()
-                            .height(48.dp)
-                            .pointerInput(onQueue) {
-                                var distance = 0f
-                                detectVerticalDragGestures(
-                                    onDragEnd = {
-                                        if (distance < -24.dp.toPx()) onQueue()
-                                        distance = 0f
-                                    },
-                                    onDragCancel = { distance = 0f },
-                                ) { change, amount ->
-                                    change.consume()
-                                    distance += amount
-                                }
-                            }
-                            .clickable(
-                                interactionSource = null,
-                                indication = null,
-                                onClick = onQueue,
-                            )
-                            .semantics { contentDescription = "Открыть очередь" },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(AppIcons.Queue, null, Modifier.size(28.dp).offset(y = (-4).dp))
-                        Icon(AppIcons.Queue, null, Modifier.size(28.dp).offset(y = 4.dp))
-                    }
-                    val available = (state.lyrics as? LyricsLookup.Available)?.lyrics
-                    val lyricsFailed =
-                        state.lyricsError != null || state.lyrics is LyricsLookup.Failed
-                    Column(
-                        Modifier.fillMaxWidth()
-                            .padding(horizontal = 24.dp)
-                            .padding(bottom = 12.dp)
-                            .clickable(enabled = !state.loadingLyrics) {
-                                if (available != null) onLyrics() else model.loadLyrics()
-                            }
-                    ) {
-                        HorizontalDivider(color = colors.outline.copy(alpha = 0.4f))
-                        Text(
-                            "Текст:",
-                            Modifier.padding(top = 8.dp),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = colors.onSurfaceVariant,
-                        )
-                        val line =
-                            when {
-                                available?.kind == LyricsKind.LINE_SYNCED ->
-                                    LyricsPosition.activeLine(available, state.snapshot.positionMs)
-                                        ?.let { available.lines[it].text }
-                                        ?.takeIf { it.isNotBlank() } ?: "Открыть текст"
-                                available != null -> "Открыть текст"
-                                state.loadingLyrics -> "Загружаем текст…"
-                                lyricsFailed -> "Не удалось загрузить. Повторить"
-                                state.lyrics != null -> "Текст недоступен"
-                                else -> "Загрузить текст"
-                            }
-                        Text(
-                            line,
-                            Modifier.heightIn(min = 24.dp),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color =
-                                if (available != null) colors.onSurface
-                                else colors.onSurfaceVariant,
-                        )
-                    }
+                    PlayerLyricsFooter(state, onQueue, onLyrics, model::loadLyrics)
                 }
             }
         }

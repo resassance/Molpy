@@ -1,6 +1,5 @@
 package app.musicplayer.ui.components
 
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -25,7 +24,6 @@ internal fun MolpyDialog(
     val shape = RoundedCornerShape(20.dp)
     AlertDialog(
         onDismissRequest = onDismissRequest,
-        modifier = Modifier.border(1.dp, colors.primary.copy(alpha = 0.2f), shape),
         shape = shape,
         containerColor = colors.surfaceContainerHigh,
         titleContentColor = colors.onSurface,

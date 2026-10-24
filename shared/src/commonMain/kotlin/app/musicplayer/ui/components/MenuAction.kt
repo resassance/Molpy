@@ -19,12 +19,19 @@ internal fun MenuAction(
     TextButton(
         onClick = onClick,
         enabled = enabled,
+        colors =
+            ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),
         modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
         shape = RoundedCornerShape(12.dp),
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, null, Modifier.size(24.dp))
+            Icon(
+                icon,
+                null,
+                Modifier.size(24.dp),
+                tint = MaterialTheme.colorScheme.primary.copy(alpha = if (enabled) 1f else 0.38f),
+            )
             Spacer(Modifier.width(12.dp))
             Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
         }

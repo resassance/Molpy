@@ -2,10 +2,7 @@ package app.musicplayer.ui.player
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.alpha
@@ -88,12 +85,7 @@ internal fun TrackArtworkStage(
             TrackArtwork(
                 shown.track.artwork,
                 artwork,
-                Modifier.size(cover)
-                    .border(
-                        1.dp,
-                        MaterialTheme.colorScheme.primary.copy(alpha = 0.25f),
-                        RoundedCornerShape(6.dp),
-                    ),
+                Modifier.size(cover),
             )
         }
     }

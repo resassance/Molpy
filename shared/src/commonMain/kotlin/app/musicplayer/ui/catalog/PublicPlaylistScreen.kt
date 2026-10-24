@@ -17,6 +17,7 @@ import app.musicplayer.model.Artwork
 import app.musicplayer.model.ArtworkKind
 import app.musicplayer.model.Track
 import app.musicplayer.ui.components.*
+import app.musicplayer.ui.theme.*
 
 private val placeholderArtwork = Artwork(ArtworkKind.PLACEHOLDER, null, null)
 
@@ -54,100 +55,101 @@ fun PublicPlaylistScreen(
         )
             model.more()
     }
-    Column(Modifier.fillMaxSize()) {
-        ScreenHeader("Публичный плейлист", onBack)
-        LazyColumn(
-            Modifier.weight(1f),
-            state = listState,
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
-        ) {
-            item(key = "header") {
-                Column(
-                    Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    TrackArtwork(
-                        state.card?.artwork ?: placeholderArtwork,
-                        artwork,
-                        Modifier.size(160.dp),
+    val colors = rememberArtworkColors(state.card?.artwork)
+    Box(Modifier.fillMaxSize()) {
+        ArtworkAmbientBackground(colors, Modifier.matchParentSize())
+        Column(Modifier.fillMaxSize()) {
+            ScreenHeader("", onBack)
+            LazyColumn(
+                Modifier.weight(1f),
+                state = listState,
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
+            ) {
+                item(key = "header") {
+                    CollectionHeader(
+                        title = state.card?.ref?.title ?: state.ref?.title.orEmpty(),
+                        countLabel =
+                            state.card?.count?.let { "Записей: $it" }
+                                ?: "Загружено записей: ${rows.size}",
+                        artwork = { modifier ->
+                            TrackArtwork(
+                                state.card?.artwork ?: placeholderArtwork,
+                                artwork,
+                                modifier,
+                            )
+                        },
+                        onPlay =
+                            if (first == null || state.tracks.loading) null
+                            else ({ model.play(first.identity.ordinal) }),
+                        onShuffle =
+                            if (first == null || state.tracks.loading) null
+                            else model::playShuffled,
+                        supportingContent = {
+                            state.card
+                                ?.owner
+                                ?.takeIf { it.isNotBlank() }
+                                ?.let {
+                                    Text(
+                                        "Автор: $it",
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            state.ref?.source?.provider?.let {
+                                Text(
+                                    if (it == "youtube") "YouTube Music" else it,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        },
                     )
-                    Text(
-                        state.card?.ref?.title ?: state.ref?.title.orEmpty(),
-                        Modifier.padding(top = 16.dp, bottom = 4.dp),
-                        style = MaterialTheme.typography.headlineMedium,
-                    )
-                    state.card
-                        ?.owner
-                        ?.takeIf { it.isNotBlank() }
-                        ?.let {
-                            Text("Автор: $it", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (state.tracks.loading)
+                    item(key = "initial-loading") {
+                        LinearProgressIndicator(Modifier.fillMaxWidth())
+                    }
+                state.tracks.error?.let {
+                    item(key = "initial-error") { InlineError(it, model::retry) }
+                }
+                state.commandError?.let { item(key = "play-error") { InlineError(it) } }
+                items(rows, key = { it.identity.ordinal }) { occurrence ->
+                    val track = occurrence.track
+                    if (track != null && !occurrence.unavailable)
+                        TrackRow(
+                            track,
+                            artwork,
+                            onPlay = { model.play(occurrence.identity.ordinal) },
+                            onMenu = { onMenu(track) },
+                            showAlbum = false,
+                            trailingLabel =
+                                if (track.durationMs?.let { it > 0 } == true) null else "",
+                        )
+                    else UnavailablePlaylistRow(occurrence, artwork)
+                }
+                if (
+                    state.tracks.data != null &&
+                        state.tracks.data?.next == null &&
+                        rows.isEmpty() &&
+                        !state.tracks.loading &&
+                        state.tracks.error == null
+                )
+                    item(key = "empty") {
+                        Text(
+                            "В плейлисте пока нет записей",
+                            Modifier.padding(vertical = 24.dp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                if (state.moreLoading)
+                    item(key = "more-loading") { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+                state.moreError?.let { item(key = "more-error") { InlineError(it, model::retry) } }
+                if (state.tracks.data?.next != null && state.moreError == null)
+                    item(key = "more") {
+                        TextButton(onClick = model::more, enabled = !state.moreLoading) {
+                            Text(if (state.moreLoading) "Загружаем…" else "Ещё записи")
                         }
-                    state.ref?.source?.provider?.let {
-                        Text(
-                            if (it == "youtube") "YouTube Music" else it,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
                     }
-                    state.card?.let { card ->
-                        Text(
-                            card.count?.let { "Записей: $it" } ?: "Загружено записей: ${rows.size}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    Button(
-                        onClick = { first?.let { model.play(it.identity.ordinal) } },
-                        enabled = first != null && !state.tracks.loading,
-                        modifier = Modifier.padding(vertical = 16.dp),
-                    ) {
-                        Icon(AppIcons.Play, null, Modifier.size(20.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("Воспроизвести")
-                    }
-                }
             }
-            if (state.tracks.loading)
-                item(key = "initial-loading") { LinearProgressIndicator(Modifier.fillMaxWidth()) }
-            state.tracks.error?.let {
-                item(key = "initial-error") { InlineError(it, model::retry) }
-            }
-            state.commandError?.let { item(key = "play-error") { InlineError(it) } }
-            items(rows, key = { it.identity.ordinal }) { occurrence ->
-                val track = occurrence.track
-                if (track != null && !occurrence.unavailable)
-                    TrackRow(
-                        track,
-                        artwork,
-                        onPlay = { model.play(occurrence.identity.ordinal) },
-                        onMenu = { onMenu(track) },
-                        trailingLabel = if (track.durationMs?.let { it > 0 } == true) null else "",
-                    )
-                else UnavailablePlaylistRow(occurrence, artwork)
-            }
-            if (
-                state.tracks.data != null &&
-                    state.tracks.data?.next == null &&
-                    rows.isEmpty() &&
-                    !state.tracks.loading &&
-                    state.tracks.error == null
-            )
-                item(key = "empty") {
-                    Text(
-                        "В плейлисте пока нет записей",
-                        Modifier.padding(vertical = 24.dp),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            if (state.moreLoading)
-                item(key = "more-loading") { LinearProgressIndicator(Modifier.fillMaxWidth()) }
-            state.moreError?.let { item(key = "more-error") { InlineError(it, model::retry) } }
-            if (state.tracks.data?.next != null && state.moreError == null)
-                item(key = "more") {
-                    TextButton(onClick = model::more, enabled = !state.moreLoading) {
-                        Text(if (state.moreLoading) "Загружаем…" else "Ещё записи")
-                    }
-                }
         }
     }
 }
@@ -158,10 +160,10 @@ private fun UnavailablePlaylistRow(occurrence: PlaylistOccurrence, artwork: Artw
     Row(
         Modifier.fillMaxWidth()
             .semantics(mergeDescendants = true) { disabled() }
-            .padding(vertical = 8.dp),
+            .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        TrackArtwork(track?.artwork ?: placeholderArtwork, artwork, Modifier.size(64.dp))
+        TrackArtwork(track?.artwork ?: placeholderArtwork, artwork, Modifier.size(48.dp))
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(

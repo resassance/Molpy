@@ -47,10 +47,10 @@ fun TrackRow(
                     RoundedCornerShape(8.dp),
                 )
                 .clickable(onClick = onPlay)
-                .padding(vertical = 8.dp),
+                .padding(vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            TrackArtwork(track.artwork, artwork, Modifier.size(64.dp))
+            TrackArtwork(track.artwork, artwork, Modifier.size(48.dp))
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(

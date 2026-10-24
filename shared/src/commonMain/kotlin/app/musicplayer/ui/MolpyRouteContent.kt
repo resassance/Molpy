@@ -120,6 +120,7 @@ internal fun MolpyRouteContent(
                 album,
                 artist,
                 onCreate,
+                onShuffle = models.library::playShuffled,
             )
         is AppRoute.PublicPlaylist -> {
             val model = models.publicPlaylist
@@ -179,6 +180,7 @@ internal fun MolpyRouteContent(
                             ?.artists
                             ?.firstOrNull { it.key == state.artistId?.value }
                             ?.playedMs ?: 0L,
+                    onShuffle = models.library::playShuffled,
                 )
             else
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

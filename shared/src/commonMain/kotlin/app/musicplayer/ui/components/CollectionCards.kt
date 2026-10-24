@@ -80,6 +80,14 @@ fun SectionHeader(title: String, action: String? = null, onAction: (() -> Unit)?
 
 @Composable
 fun PlaylistCollage(covers: List<Artwork>, artwork: ArtworkLoader, modifier: Modifier = Modifier) {
+    if (covers.size == 1) {
+        TrackArtwork(
+            covers.single(),
+            artwork,
+            modifier.clip(androidx.compose.foundation.shape.RoundedCornerShape(6.dp)),
+        )
+        return
+    }
     Column(
         modifier
             .clip(androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
