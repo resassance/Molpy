@@ -18,7 +18,8 @@ internal fun PlayerBody(
     modifier: Modifier = Modifier,
     entryKey: Any? = null,
     artwork: @Composable () -> Unit,
-    controls: @Composable () -> Unit,
+    metadata: @Composable () -> Unit,
+    transport: @Composable () -> Unit,
 ) {
     val scroll = rememberScrollState()
     LaunchedEffect(entryKey) { scroll.scrollTo(0) }
@@ -26,32 +27,50 @@ internal fun PlayerBody(
         modifier = modifier,
         content = {
             Box { artwork() }
-            Column(Modifier.fillMaxWidth().verticalScroll(scroll)) { controls() }
+            Column(Modifier.fillMaxWidth().verticalScroll(scroll)) { metadata() }
+            Box { transport() }
         },
     ) { children, constraints ->
         val width = constraints.maxWidth
         val height = constraints.maxHeight
-        val gap = min(4.dp.roundToPx(), height / 10)
-        val preferredCover = min((width * 0.72f).toInt(), 320.dp.roundToPx())
-        val minimumFrame = min(120.dp.roundToPx(), height / 3)
-        val panel =
-            children[1].measure(
-                Constraints(
-                    minWidth = width,
-                    maxWidth = width,
-                    maxHeight = (height - minimumFrame - gap).coerceAtLeast(0),
+        val gap = min(8.dp.roundToPx(), height / 10)
+        if (width > height * 2) {
+            val artworkWidth = min(width / 2, height + 48.dp.roundToPx())
+            val cover = children[0].measure(Constraints.fixed(artworkWidth, height))
+            val panelWidth = (width - artworkWidth - gap).coerceAtLeast(0)
+            val controls =
+                children[2].measure(
+                    Constraints(minWidth = panelWidth, maxWidth = panelWidth, maxHeight = height)
                 )
-            )
-        val frameHeight =
-            (height - panel.height - gap).coerceIn(
-                minimumFrame,
-                (preferredCover + 16.dp.roundToPx()).coerceAtLeast(minimumFrame),
-            )
-        val cover = children[0].measure(Constraints.fixed(width, frameHeight))
-        layout(width, height) {
-            val top = ((height - cover.height - gap - panel.height) / 2).coerceAtLeast(0)
-            cover.placeRelative(0, top)
-            panel.placeRelative(0, top + cover.height + gap)
+            val detailsHeight = (height - controls.height).coerceAtLeast(0)
+            val details = children[1].measure(Constraints.fixed(panelWidth, detailsHeight))
+            layout(width, height) {
+                cover.placeRelative(0, 0)
+                details.placeRelative(artworkWidth + gap, 0)
+                controls.placeRelative(artworkWidth + gap, detailsHeight)
+            }
+        } else {
+            val controls =
+                children[2].measure(
+                    Constraints(minWidth = width, maxWidth = width, maxHeight = height)
+                )
+            val available = (height - controls.height - gap).coerceAtLeast(0)
+            val preferredFrame =
+                min(min((width * 0.76f).toInt(), 360.dp.roundToPx()) + 16.dp.roundToPx(), available)
+            val minimumDetails = min(144.dp.roundToPx(), height / 4)
+            val minimumFrame =
+                if (height >= 500.dp.roundToPx() && fontScale <= 1.1f)
+                    min((width * 0.70f).toInt() + 17.dp.roundToPx(), preferredFrame)
+                else min(120.dp.roundToPx(), preferredFrame)
+            val frameHeight = (available - minimumDetails).coerceIn(minimumFrame, preferredFrame)
+            val cover = children[0].measure(Constraints.fixed(width, frameHeight))
+            val detailsHeight = (available - frameHeight).coerceAtLeast(0)
+            val details = children[1].measure(Constraints.fixed(width, detailsHeight))
+            layout(width, height) {
+                cover.placeRelative(0, 0)
+                details.placeRelative(0, cover.height + gap)
+                controls.placeRelative(0, height - controls.height)
+            }
         }
     }
 }

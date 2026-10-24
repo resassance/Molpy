@@ -74,7 +74,7 @@ internal fun PlayerLyricsFooter(
             Icon(AppIcons.Queue, null, Modifier.size(24.dp).offset(y = 3.dp))
         }
         Column(
-            Modifier.fillMaxWidth().weight(1f).padding(horizontal = 24.dp).clickable(
+            Modifier.fillMaxWidth().weight(1f).padding(horizontal = 16.dp).clickable(
                 enabled = !state.loadingLyrics
             ) {
                 if (available != null) onLyrics() else onRetryLyrics()

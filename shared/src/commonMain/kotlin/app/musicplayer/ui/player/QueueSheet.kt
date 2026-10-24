@@ -38,13 +38,11 @@ fun QueueSheet(
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
     ) {
         ThemeWindowAppearance(LocalAppTheme.current)
-        Column(
-            Modifier.fillMaxWidth()
-                .heightIn(max = 640.dp)
-                .padding(horizontal = 16.dp)
-                .navigationBarsPadding()
-        ) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.fillMaxWidth().heightIn(max = 640.dp).navigationBarsPadding()) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Column(Modifier.weight(1f)) {
                     Text("Очередь", style = MaterialTheme.typography.headlineMedium)
                     val loadedCount = queue.upcoming.size + if (queue.current != null) 1 else 0
@@ -61,14 +59,14 @@ fun QueueSheet(
             if (queue.shufflePending)
                 Text(
                     "Подготавливаем перемешивание",
-                    Modifier.padding(vertical = 8.dp).semantics {
+                    Modifier.padding(horizontal = 16.dp, vertical = 8.dp).semantics {
                         liveRegion = LiveRegionMode.Polite
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             LazyColumn(
-                Modifier.weight(1f, fill = false),
+                Modifier.weight(1f, fill = false).padding(horizontal = 16.dp),
                 contentPadding = PaddingValues(bottom = 24.dp),
             ) {
                 state.repositoryError?.let { error ->
@@ -266,6 +264,7 @@ fun QueueSheet(
                         )
                     }
             }
+            MiniPlayer(state, artwork, onClose, model::playPause, model::next)
         }
     }
 }

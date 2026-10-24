@@ -2,7 +2,6 @@ package app.musicplayer.ui.player
 
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
@@ -36,15 +35,20 @@ fun NowPlayingScreen(
     visible: Boolean = true,
     gesturesEnabled: Boolean = true,
     onArtists: ((Track) -> Unit)? = null,
+    onPlaylist: (() -> Unit)? = null,
+    onDownload: (() -> Unit)? = null,
+    downloadLabel: String = "Скачать",
+    downloadEnabled: Boolean = false,
 ) {
     val colors = MaterialTheme.colorScheme
     val track = state.currentTrack
     PlayerSheet(visible, gesturesEnabled, onClose) { dragHandle ->
         BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding().testTag("now-playing")) {
+            val compact = maxHeight < 700.dp || LocalDensity.current.fontScale > 1.1f
             ArtworkAmbientBackground(LocalArtworkColors.current, Modifier.matchParentSize())
             Column(Modifier.fillMaxSize()) {
                 Row(
-                    dragHandle.fillMaxWidth().height(56.dp).padding(horizontal = 8.dp),
+                    dragHandle.fillMaxWidth().height(48.dp).padding(horizontal = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     IconButton(onClose) { Icon(AppIcons.Down, "Свернуть плеер") }
@@ -79,8 +83,8 @@ fun NowPlayingScreen(
                             BoxWithConstraints(Modifier.fillMaxWidth()) {
                                 val cover =
                                     minOf(
-                                        maxWidth * 0.72f,
-                                        320.dp,
+                                        (maxWidth - 64.dp).coerceAtLeast(0.dp),
+                                        360.dp,
                                         (maxHeight - 16.dp).coerceAtLeast(0.dp),
                                     )
                                 TrackArtworkStage(
@@ -92,11 +96,14 @@ fun NowPlayingScreen(
                                 )
                             }
                         },
-                        controls = {
+                        metadata = {
                             Column(
                                 Modifier.widthIn(max = 520.dp)
                                     .fillMaxWidth()
-                                    .padding(horizontal = 24.dp, vertical = 4.dp)
+                                    .padding(
+                                        horizontal = 16.dp,
+                                        vertical = if (compact) 0.dp else 4.dp,
+                                    )
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     TrackChangeContent(
@@ -173,6 +180,136 @@ fun NowPlayingScreen(
                                         overflow = TextOverflow.Ellipsis,
                                     )
                                 }
+                                if (
+                                    state.snapshot.error != null ||
+                                        state.commandError != null ||
+                                        queue.gap != null ||
+                                        queue.sourceError != null ||
+                                        queue.sourceRecoveryError != null ||
+                                        queue.shufflePending ||
+                                        state.snapshot.status in
+                                            setOf(PlayerStatus.RESOLVING, PlayerStatus.BUFFERING)
+                                )
+                                    Box(
+                                        Modifier.fillMaxWidth()
+                                            .height(48.dp * LocalDensity.current.fontScale),
+                                        contentAlignment = Alignment.CenterStart,
+                                    ) {
+                                        val error = state.snapshot.error ?: state.commandError
+                                        val gap = queue.gap
+                                        val retrySource =
+                                            queue.sourceCanRetry &&
+                                                (error == queue.sourceError ||
+                                                    (error?.code == ErrorCode.DATABASE &&
+                                                        queue.sourceError?.code ==
+                                                            ErrorCode.DATABASE))
+                                        when {
+                                            error != null ->
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Text(
+                                                        present(error).message,
+                                                        Modifier.weight(1f),
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = colors.onSurfaceVariant,
+                                                        maxLines = 2,
+                                                        overflow = TextOverflow.Ellipsis,
+                                                    )
+                                                    if (error.retryable || retrySource)
+                                                        TextButton(
+                                                            if (retrySource) model::retryQueueSource
+                                                            else model::retry
+                                                        ) {
+                                                            Text("Повторить")
+                                                        }
+                                                }
+                                            state.snapshot.status == PlayerStatus.RESOLVING ->
+                                                Text(
+                                                    "Подготавливаем трек…",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = colors.onSurfaceVariant,
+                                                )
+                                            state.snapshot.status == PlayerStatus.BUFFERING ->
+                                                Text(
+                                                    "Загружаем аудио…",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = colors.onSurfaceVariant,
+                                                )
+                                            gap != null &&
+                                                (gap.waiting ||
+                                                    gap.error != null ||
+                                                    gap.phase != QueueSourcePhase.LOADING) -> {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Text(
+                                                        queueSourceMessage(gap),
+                                                        Modifier.weight(1f).semantics {
+                                                            liveRegion = LiveRegionMode.Polite
+                                                        },
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = colors.onSurfaceVariant,
+                                                        maxLines = 2,
+                                                        overflow = TextOverflow.Ellipsis,
+                                                    )
+                                                    if (gap.canRetry)
+                                                        TextButton(model::retryQueueSource) {
+                                                            Text("Повторить")
+                                                        }
+                                                }
+                                            }
+                                            queue.sourceError != null ->
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Text(
+                                                        present(queue.sourceError).message,
+                                                        Modifier.weight(1f).semantics {
+                                                            liveRegion = LiveRegionMode.Polite
+                                                        },
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = colors.onSurfaceVariant,
+                                                        maxLines = 2,
+                                                        overflow = TextOverflow.Ellipsis,
+                                                    )
+                                                    if (queue.sourceCanRetry)
+                                                        TextButton(model::retryQueueSource) {
+                                                            Text("Повторить")
+                                                        }
+                                                }
+                                            queue.sourceRecoveryError != null ->
+                                                Text(
+                                                    present(queue.sourceRecoveryError).message,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = colors.onSurfaceVariant,
+                                                    maxLines = 2,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                )
+                                            queue.shufflePending ->
+                                                Text(
+                                                    "Подготавливаем перемешивание",
+                                                    Modifier.semantics {
+                                                        liveRegion = LiveRegionMode.Polite
+                                                    },
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = colors.onSurfaceVariant,
+                                                )
+                                        }
+                                    }
+                                if (compact) {
+                                    PlayerQuickActions(
+                                        onLyrics,
+                                        onPlaylist,
+                                        onDownload,
+                                        downloadLabel,
+                                        downloadEnabled,
+                                    )
+                                }
+                            }
+                        },
+                        transport = {
+                            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                                 key(state.snapshot.current?.id) {
                                     PlaybackProgress(
                                         state.snapshot.positionMs,
@@ -184,8 +321,7 @@ fun NowPlayingScreen(
                                 }
                                 BoxWithConstraints(
                                     Modifier.fillMaxWidth()
-                                        .height(76.dp)
-                                        .padding(top = 4.dp)
+                                        .height(if (compact) 64.dp else 88.dp)
                                         .testTag("player-transport")
                                 ) {
                                     val navigationSize = if (maxWidth < 280.dp) 48.dp else 56.dp
@@ -215,20 +351,14 @@ fun NowPlayingScreen(
                                             val active =
                                                 state.snapshot.status == PlayerStatus.PLAYING ||
                                                     state.snapshot.playWhenReady
-                                            FilledIconButton(
+                                            IconButton(
                                                 model::playPause,
-                                                Modifier.size(72.dp),
-                                                shape = CircleShape,
-                                                colors =
-                                                    IconButtonDefaults.filledIconButtonColors(
-                                                        containerColor = colors.onSurface,
-                                                        contentColor = colors.surface,
-                                                    ),
+                                                Modifier.size(if (compact) 64.dp else 80.dp),
                                             ) {
                                                 Icon(
                                                     if (active) AppIcons.Pause else AppIcons.Play,
                                                     if (active) "Пауза" else "Воспроизвести",
-                                                    Modifier.size(36.dp),
+                                                    Modifier.size(if (compact) 48.dp else 64.dp),
                                                 )
                                             }
                                             IconButton(
@@ -246,105 +376,15 @@ fun NowPlayingScreen(
                                         Spacer(Modifier.width(48.dp))
                                     }
                                 }
-                                Box(
-                                    Modifier.fillMaxWidth()
-                                        .height(48.dp * LocalDensity.current.fontScale),
-                                    contentAlignment = Alignment.CenterStart,
-                                ) {
-                                    val error = state.snapshot.error ?: state.commandError
-                                    val gap = queue.gap
-                                    val retrySource =
-                                        queue.sourceCanRetry &&
-                                            (error == queue.sourceError ||
-                                                (error?.code == ErrorCode.DATABASE &&
-                                                    queue.sourceError?.code == ErrorCode.DATABASE))
-                                    when {
-                                        error != null ->
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Text(
-                                                    present(error).message,
-                                                    Modifier.weight(1f),
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = colors.onSurfaceVariant,
-                                                    maxLines = 2,
-                                                    overflow = TextOverflow.Ellipsis,
-                                                )
-                                                if (error.retryable || retrySource)
-                                                    TextButton(
-                                                        if (retrySource) model::retryQueueSource
-                                                        else model::retry
-                                                    ) {
-                                                        Text("Повторить")
-                                                    }
-                                            }
-                                        state.snapshot.status == PlayerStatus.RESOLVING ->
-                                            Text(
-                                                "Подготавливаем трек…",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = colors.onSurfaceVariant,
-                                            )
-                                        state.snapshot.status == PlayerStatus.BUFFERING ->
-                                            Text(
-                                                "Загружаем аудио…",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = colors.onSurfaceVariant,
-                                            )
-                                        gap != null &&
-                                            (gap.waiting ||
-                                                gap.error != null ||
-                                                gap.phase != QueueSourcePhase.LOADING) -> {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Text(
-                                                    queueSourceMessage(gap),
-                                                    Modifier.weight(1f).semantics {
-                                                        liveRegion = LiveRegionMode.Polite
-                                                    },
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = colors.onSurfaceVariant,
-                                                    maxLines = 2,
-                                                    overflow = TextOverflow.Ellipsis,
-                                                )
-                                                if (gap.canRetry)
-                                                    TextButton(model::retryQueueSource) {
-                                                        Text("Повторить")
-                                                    }
-                                            }
-                                        }
-                                        queue.sourceError != null ->
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Text(
-                                                    present(queue.sourceError).message,
-                                                    Modifier.weight(1f).semantics {
-                                                        liveRegion = LiveRegionMode.Polite
-                                                    },
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = colors.onSurfaceVariant,
-                                                    maxLines = 2,
-                                                    overflow = TextOverflow.Ellipsis,
-                                                )
-                                                if (queue.sourceCanRetry)
-                                                    TextButton(model::retryQueueSource) {
-                                                        Text("Повторить")
-                                                    }
-                                            }
-                                        queue.sourceRecoveryError != null ->
-                                            Text(
-                                                present(queue.sourceRecoveryError).message,
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = colors.onSurfaceVariant,
-                                                maxLines = 2,
-                                                overflow = TextOverflow.Ellipsis,
-                                            )
-                                        queue.shufflePending ->
-                                            Text(
-                                                "Подготавливаем перемешивание",
-                                                Modifier.semantics {
-                                                    liveRegion = LiveRegionMode.Polite
-                                                },
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = colors.onSurfaceVariant,
-                                            )
-                                    }
+
+                                if (!compact) {
+                                    PlayerQuickActions(
+                                        onLyrics,
+                                        onPlaylist,
+                                        onDownload,
+                                        downloadLabel,
+                                        downloadEnabled,
+                                    )
                                 }
                             }
                         },
@@ -353,5 +393,65 @@ fun NowPlayingScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun PlayerQuickActions(
+    onLyrics: () -> Unit,
+    onPlaylist: (() -> Unit)?,
+    onDownload: (() -> Unit)?,
+    downloadLabel: String,
+    downloadEnabled: Boolean,
+) {
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        PlayerQuickAction("Текст", AppIcons.Queue, onLyrics, Modifier.weight(1f))
+        PlayerQuickAction(
+            "В плейлист",
+            AppIcons.PlaylistAdd,
+            { onPlaylist?.invoke() },
+            Modifier.weight(1.35f),
+            onPlaylist != null,
+        )
+        PlayerQuickAction(
+            downloadLabel,
+            AppIcons.Download,
+            { onDownload?.invoke() },
+            Modifier.weight(1.15f),
+            downloadEnabled && onDownload != null,
+        )
+    }
+}
+
+@Composable
+private fun PlayerQuickAction(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    FilledTonalButton(
+        onClick = onClick,
+        modifier = modifier.heightIn(min = 48.dp),
+        enabled = enabled,
+        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+        colors =
+            ButtonDefaults.filledTonalButtonColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                contentColor = MaterialTheme.colorScheme.onSurface,
+            ),
+    ) {
+        Icon(icon, null, Modifier.size(20.dp))
+        Spacer(Modifier.width(4.dp))
+        Text(
+            label,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.labelMedium,
+        )
     }
 }

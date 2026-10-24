@@ -230,6 +230,9 @@ fun MolpyApp(
                                 nav.overlays.lastOrNull() == AppOverlay.NowPlaying && edit == null
                         )
                 ) {
+                    val currentDownload = track?.let { selectDownload(it, player.snapshot) }
+                    val hasDownload =
+                        track != null && downloads.assets.any { it.trackId == track.id }
                     NowPlayingScreen(
                         player,
                         models.player,
@@ -254,6 +257,35 @@ fun MolpyApp(
                         gesturesEnabled = nav.overlays.lastOrNull() == AppOverlay.NowPlaying,
                         onArtists =
                             if (models.artistRepository == null) null else ::openTrackArtists,
+                        onPlaylist =
+                            track?.let { value ->
+                                {
+                                    menuTrack = value
+                                    navigation.open(AppOverlay.PlaylistPicker(value.id))
+                                }
+                            },
+                        onDownload =
+                            track?.let {
+                                {
+                                    if (hasDownload) {
+                                        navigation.select(AppTab.LIBRARY)
+                                        navigation.push(AppRoute.Downloads)
+                                    } else {
+                                        currentDownload?.let { chosen ->
+                                            scope.launch {
+                                                action {
+                                                    models.actions.download(
+                                                        chosen.track,
+                                                        chosen.candidate,
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                        downloadLabel = if (hasDownload) "Загрузки" else "Скачать",
+                        downloadEnabled = hasDownload || currentDownload != null,
                     )
                 }
                 CompositionLocalProvider(
@@ -380,7 +412,15 @@ fun MolpyApp(
                                 onClose = { navigation.back() },
                             )
                         AppOverlay.Lyrics ->
-                            LyricsScreen(player, { navigation.back() }, models.player::loadLyrics)
+                            LyricsScreen(
+                                state = player,
+                                artwork = artwork,
+                                onClose = { navigation.back() },
+                                onRetry = models.player::loadLyrics,
+                                onPlayPause = models.player::playPause,
+                                onNext = models.player::next,
+                                onSeek = models.player::seek,
+                            )
                         is AppOverlay.TrackMenu ->
                             menuTrack
                                 ?.takeIf { it.id == overlay.trackId }

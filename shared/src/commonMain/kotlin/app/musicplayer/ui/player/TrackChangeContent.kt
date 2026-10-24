@@ -66,9 +66,9 @@ internal fun TrackArtworkStage(
                 TrackArtwork(
                     previous,
                     artwork,
-                    Modifier.offset(x = -(cover * 0.2f))
+                    Modifier.offset(x = -(cover * 0.42f))
                         .size(cover * 0.8f)
-                        .alpha(0.30f)
+                        .alpha(0.50f)
                         .clearAndSetSemantics {},
                 )
             }
@@ -76,9 +76,9 @@ internal fun TrackArtworkStage(
                 TrackArtwork(
                     next,
                     artwork,
-                    Modifier.offset(x = cover * 0.2f)
+                    Modifier.offset(x = cover * 0.42f)
                         .size(cover * 0.8f)
-                        .alpha(0.30f)
+                        .alpha(0.50f)
                         .clearAndSetSemantics {},
                 )
             }
