@@ -11,6 +11,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -27,15 +30,14 @@ fun MiniPlayer(
     onNext: () -> Unit,
 ) {
     val track = state.currentTrack ?: return
-    val color = MaterialTheme.colorScheme.primary
+    val color = MaterialTheme.colorScheme.onSurface
     val open by rememberUpdatedState(onOpen)
     Box(
         Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
             .fillMaxWidth()
             .height(64.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.9f))
-            .border(1.dp, color.copy(alpha = 0.3f), RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.92f))
             .pointerInput(Unit) {
                 var distance = 0f
                 detectVerticalDragGestures(
@@ -60,7 +62,7 @@ fun MiniPlayer(
                 Modifier.weight(1f).fillMaxHeight().clickable(onClick = onOpen),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                TrackArtwork(track.artwork, artwork, Modifier.size(40.dp))
+                TrackArtwork(track.artwork, artwork, Modifier.size(44.dp))
                 Column(Modifier.padding(start = 10.dp)) {
                     Text(
                         track.title,
@@ -88,15 +90,18 @@ fun MiniPlayer(
             }
             IconButton(onNext, Modifier.size(48.dp)) { Icon(AppIcons.Next, "Следующий трек") }
         }
-        val duration = state.snapshot.durationMs?.takeIf { it > 0 }
+        val duration = state.effectiveDurationMs
         val fraction =
             if (duration == null) 0f
             else (state.snapshot.positionMs.toDouble() / duration).toFloat().coerceIn(0f, 1f)
         Box(
             Modifier.align(Alignment.BottomStart)
+                .padding(start = 64.dp, end = 106.dp, bottom = 6.dp)
                 .fillMaxWidth()
                 .height(2.dp)
-                .background(color.copy(alpha = 0.25f))
+                .clip(RoundedCornerShape(1.dp))
+                .semantics { progressBarRangeInfo = ProgressBarRangeInfo(fraction, 0f..1f) }
+                .background(color.copy(alpha = 0.16f))
         ) {
             Box(Modifier.fillMaxWidth(fraction).fillMaxHeight().background(color))
         }

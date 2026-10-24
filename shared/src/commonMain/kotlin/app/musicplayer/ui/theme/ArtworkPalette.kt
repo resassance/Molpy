@@ -35,8 +35,8 @@ object ArtworkPalette {
                         cluster.sumOf { channels(it)[index].toLong() }.div(cluster.size).toInt()
                     }
                 )
-        val background = blend(0xff100c12.toInt(), hue, 0.07)
-        val surface = blend(0xff1b141e.toInt(), hue, 0.10)
+        val background = blend(0xff0a0b0d.toInt(), hue, 0.07)
+        val surface = blend(0xff17191d.toInt(), hue, 0.10)
         val accent = blend(hue, 0xffffffff.toInt(), 0.55)
         val foreground = 0xfffaf7fa.toInt()
         val onAccent =

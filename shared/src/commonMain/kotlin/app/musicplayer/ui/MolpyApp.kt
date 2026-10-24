@@ -1,6 +1,5 @@
 package app.musicplayer.ui
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -156,15 +155,10 @@ fun MolpyApp(
         CompositionLocalProvider(
             LocalArtworkEpoch provides epoch,
             LocalArtistDirectory provides artistDirectory,
+            LocalArtworkSampler provides models.sampleArtworkPixels,
         ) {
-            Box(
-                Modifier.fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(Color(colors.surface), Color(colors.background))
-                        )
-                    )
-            ) {
+            Box(Modifier.fillMaxSize()) {
+                ArtworkAmbientBackground(colors, Modifier.matchParentSize())
                 Scaffold(
                     containerColor = Color.Transparent,
                     contentColor = MaterialTheme.colorScheme.onBackground,
@@ -183,49 +177,13 @@ fun MolpyApp(
                                     models.player::playPause,
                                     models.player::next,
                                 )
-                                NavigationBar(containerColor = Color.Transparent) {
-                                    AppTab.entries.forEach { tab ->
-                                        NavigationBarItem(
-                                            selected = nav.selectedTab == tab,
-                                            onClick = {
-                                                keyboard?.hide()
-                                                navigation.select(tab)
-                                            },
-                                            colors =
-                                                NavigationBarItemDefaults.colors(
-                                                    indicatorColor = Color.Transparent,
-                                                    selectedIconColor =
-                                                        MaterialTheme.colorScheme.primary,
-                                                    selectedTextColor =
-                                                        MaterialTheme.colorScheme.primary,
-                                                    unselectedIconColor =
-                                                        MaterialTheme.colorScheme.onSurfaceVariant,
-                                                    unselectedTextColor =
-                                                        MaterialTheme.colorScheme.onSurfaceVariant,
-                                                ),
-                                            icon = {
-                                                Icon(
-                                                    when (tab) {
-                                                        AppTab.LIBRARY -> AppIcons.Library
-                                                        AppTab.SEARCH -> AppIcons.Search
-                                                        AppTab.PROFILE -> AppIcons.Profile
-                                                    },
-                                                    null,
-                                                )
-                                            },
-                                            label = {
-                                                Text(
-                                                    tab.label,
-                                                    maxLines = 1,
-                                                    softWrap = false,
-                                                    overflow =
-                                                        androidx.compose.ui.text.style.TextOverflow
-                                                            .Ellipsis,
-                                                )
-                                            },
-                                        )
-                                    }
-                                }
+                                MolpyBottomNavigation(
+                                    nav.selectedTab,
+                                    { tab ->
+                                        keyboard?.hide()
+                                        navigation.select(tab)
+                                    },
+                                )
                             }
                     },
                 ) { padding ->

@@ -17,10 +17,14 @@ class PaletteModel(
     private var request: Job? = null
 
     fun update(trackId: TrackId?, artwork: Artwork?) {
+        update(artwork.takeIf { trackId != null })
+    }
+
+    fun update(artwork: Artwork?) {
         val selected = ++generation
         request?.cancel()
         mutable.value = cache[artwork] ?: ArtworkPalette.fromPixels(intArrayOf())
-        if (trackId == null || artwork == null || cache.containsKey(artwork)) return
+        if (artwork == null || cache.containsKey(artwork)) return
         request = scope.launch {
             val pixels =
                 try {

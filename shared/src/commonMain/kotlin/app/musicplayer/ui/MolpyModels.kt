@@ -1,6 +1,7 @@
 package app.musicplayer.ui
 
 import app.musicplayer.artists.*
+import app.musicplayer.model.*
 import app.musicplayer.ui.artists.*
 import app.musicplayer.ui.catalog.CatalogModel
 import app.musicplayer.ui.catalog.PublicPlaylistModel
@@ -31,6 +32,7 @@ class MolpyModels(
     val artistMerge: ArtistMergeModel? = null,
     val artistRepository: ArtistRepository? = null,
     val publicPlaylist: PublicPlaylistModel? = null,
+    val sampleArtworkPixels: (suspend (Artwork) -> AppResult<IntArray>)? = null,
 ) {
     private val epoch = MutableStateFlow(0L)
     val artworkEpoch: StateFlow<Long> = epoch.asStateFlow()

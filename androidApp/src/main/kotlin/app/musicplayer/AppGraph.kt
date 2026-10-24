@@ -251,6 +251,7 @@ class AppGraph(private val context: Context) {
                 artistMerge = ArtistMergeModel(artists, ownerScope),
                 artistRepository = artists,
                 publicPlaylist = PublicPlaylistModel(browse, player, ownerScope),
+                sampleArtworkPixels = { artwork.samplePixels(context, it) },
             )
             .also { models.add(WeakReference(it)) }
     }
