@@ -54,11 +54,7 @@ internal class BrowseMapper(
     suspend fun artist(body: String, ref: ArtistRef): AppResult<MappedArtist> = mapped {
         val root = root(body)
         val sections = sections(root)
-        // A visual/channel or release header does not establish a music artist profile.
-        val header =
-            root.objectOrNull("header")?.objectOrNull("musicImmersiveHeaderRenderer")
-                ?: schemaFailure()
-        if (header.objectOrNull("title")?.let(::text).isNullOrBlank()) schemaFailure()
+        val header = ArtistArtworkMapper.musicArtistHeader(root)
         val artist = ref.copy(name = header?.objectOrNull("title")?.let(::text) ?: ref.name)
         val albums = mutableListOf<AlbumCard>()
         val singles = mutableListOf<AlbumCard>()
@@ -94,7 +90,7 @@ internal class BrowseMapper(
         }
         MappedArtist(
             artist,
-            header?.let(::artwork),
+            ArtistArtworkMapper.photo(header),
             trackSections(sections, BrowseTrackContext(artists = listOf(artist))),
             MappedCatalogPage(albums.distinctBy { it.album.source }, albumNext),
             MappedCatalogPage(singles.distinctBy { it.album.source }, singleNext),
