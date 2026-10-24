@@ -90,11 +90,20 @@ fun SearchResultRow(
         Modifier.fillMaxWidth().clickable(onClick = open).padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        TrackArtwork(
-            image ?: Artwork(ArtworkKind.PLACEHOLDER, null, null),
-            artwork,
-            Modifier.size(64.dp),
-        )
+        if (item is SearchItem.ArtistItem)
+            ArtistPhoto(
+                item.ref.name,
+                item.ref.source,
+                artwork,
+                Modifier.size(64.dp),
+                initial = image,
+            )
+        else
+            TrackArtwork(
+                image ?: Artwork(ArtworkKind.PLACEHOLDER, null, null),
+                artwork,
+                Modifier.size(64.dp),
+            )
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(

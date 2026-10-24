@@ -1,5 +1,6 @@
 package app.musicplayer.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -8,6 +9,7 @@ import androidx.compose.ui.*
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import app.musicplayer.appearance.AppTheme
 import app.musicplayer.artists.*
 import app.musicplayer.artwork.ArtworkLoader
 import app.musicplayer.collections.*
@@ -17,6 +19,7 @@ import app.musicplayer.ui.components.*
 import app.musicplayer.ui.library.*
 import app.musicplayer.ui.navigation.*
 import app.musicplayer.ui.player.*
+import app.musicplayer.ui.settings.AppearanceState
 import app.musicplayer.ui.theme.*
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.*
@@ -38,11 +41,19 @@ fun MolpyApp(
     formatDate: (Long) -> String,
     backHandler: @Composable (Boolean, () -> Unit) -> Unit,
 ) {
+    val appearance =
+        models.appearance?.state?.collectAsState()?.value
+            ?: AppearanceState(theme = AppTheme.DARK, initialized = true)
+    if (!appearance.initialized) {
+        Box(Modifier.fillMaxSize().background(Color(0xff171717)))
+        return
+    }
     val player by models.player.state.collectAsState()
     val library by models.library.state.collectAsState()
     val downloads by models.downloads.state.collectAsState()
     val nav by navigation.state.collectAsState()
-    val colors by models.palette.state.collectAsState()
+    val sampled by models.palette.state.collectAsState()
+    val colors = AppThemePalette.colors(appearance.theme, sampled)
     val epoch by models.artworkEpoch.collectAsState()
     val scope = rememberCoroutineScope()
     val saved = rememberSaveableStateHolder()
@@ -151,8 +162,9 @@ fun MolpyApp(
             }
         }
     }
-    MolpyTheme(colors) {
+    MolpyTheme(appearance.theme, colors) {
         CompositionLocalProvider(
+            LocalArtistArtworkCoordinator provides models.artistArtwork,
             LocalArtworkEpoch provides epoch,
             LocalArtistDirectory provides artistDirectory,
             LocalArtworkSampler provides models.sampleArtworkPixels,
@@ -188,286 +200,322 @@ fun MolpyApp(
                     },
                 ) { padding ->
                     Box(Modifier.fillMaxSize().padding(padding)) {
-                        saved.SaveableStateProvider("${nav.selectedTab}:${nav.current}") {
-                            MolpyRouteContent(
-                                nav.current,
-                                models,
-                                artwork,
-                                navigation,
-                                ::menu,
-                                { edit = PlaylistEdit(null, "") },
-                                { edit = PlaylistEdit(it.id, it.name) },
-                                { navigation.open(AppOverlay.ConfirmDeletePlaylist(it)) },
-                                onManageStorage,
-                                formatDate,
-                            )
+                        CompositionLocalProvider(
+                            LocalArtistArtworkViewport provides
+                                ArtistArtworkViewport(
+                                    active = nav.overlays.isEmpty() && edit == null
+                                )
+                        ) {
+                            saved.SaveableStateProvider("${nav.selectedTab}:${nav.current}") {
+                                MolpyRouteContent(
+                                    nav.current,
+                                    models,
+                                    artwork,
+                                    navigation,
+                                    ::menu,
+                                    { edit = PlaylistEdit(null, "") },
+                                    { edit = PlaylistEdit(it.id, it.name) },
+                                    { navigation.open(AppOverlay.ConfirmDeletePlaylist(it)) },
+                                    onManageStorage,
+                                    formatDate,
+                                )
+                            }
                         }
                     }
                 }
-                NowPlayingScreen(
-                    player,
-                    models.player,
-                    artwork,
-                    track?.id in favoriteIds,
-                    {
-                        track?.let { value ->
-                            scope.launch {
-                                action {
-                                    models.actions.favorite(value, value.id !in favoriteIds)
+                CompositionLocalProvider(
+                    LocalArtistArtworkViewport provides
+                        ArtistArtworkViewport(
+                            active =
+                                nav.overlays.lastOrNull() == AppOverlay.NowPlaying && edit == null
+                        )
+                ) {
+                    NowPlayingScreen(
+                        player,
+                        models.player,
+                        artwork,
+                        track?.id in favoriteIds,
+                        {
+                            track?.let { value ->
+                                scope.launch {
+                                    action {
+                                        models.actions.favorite(value, value.id !in favoriteIds)
+                                    }
                                 }
                             }
-                        }
-                    },
-                    { navigation.back() },
-                    { navigation.open(AppOverlay.Queue) },
-                    { navigation.open(AppOverlay.Lyrics) },
-                    ::menu,
-                    { navigation.push(AppRoute.Artist(it)) },
-                    { navigation.push(AppRoute.Album(it)) },
-                    visible = AppOverlay.NowPlaying in nav.overlays,
-                    gesturesEnabled = nav.overlays.lastOrNull() == AppOverlay.NowPlaying,
-                    onArtists = if (models.artistRepository == null) null else ::openTrackArtists,
-                )
-                when (val overlay = nav.overlays.lastOrNull()) {
-                    is AppOverlay.ArtistEditor ->
-                        if (artistEditor.track?.id == overlay.trackId) {
-                            ArtistEditorSheet(
-                                artistEditor,
+                        },
+                        { navigation.back() },
+                        { navigation.open(AppOverlay.Queue) },
+                        { navigation.open(AppOverlay.Lyrics) },
+                        ::menu,
+                        { navigation.push(AppRoute.Artist(it)) },
+                        { navigation.push(AppRoute.Album(it)) },
+                        visible = AppOverlay.NowPlaying in nav.overlays,
+                        gesturesEnabled = nav.overlays.lastOrNull() == AppOverlay.NowPlaying,
+                        onArtists =
+                            if (models.artistRepository == null) null else ::openTrackArtists,
+                    )
+                }
+                CompositionLocalProvider(
+                    LocalArtistArtworkViewport provides ArtistArtworkViewport(active = edit == null)
+                ) {
+                    when (val overlay = nav.overlays.lastOrNull()) {
+                        is AppOverlay.ArtistEditor ->
+                            if (artistEditor.track?.id == overlay.trackId) {
+                                ArtistEditorSheet(
+                                    artistEditor,
+                                    artistDirectory,
+                                    { index ->
+                                        models.artistEditor?.setQuery("")
+                                        navigation.open(
+                                            AppOverlay.ArtistPicker(overlay.trackId, index)
+                                        )
+                                    },
+                                    {
+                                        models.artistEditor?.setQuery("")
+                                        navigation.open(
+                                            AppOverlay.ArtistPicker(overlay.trackId, null)
+                                        )
+                                    },
+                                    { models.artistEditor?.remove(it) },
+                                    { models.artistEditor?.save() },
+                                    { models.artistEditor?.reset() },
+                                    {
+                                        models.artistEditor?.closeDraft()
+                                        finish(overlay)
+                                    },
+                                )
+                            }
+                        is AppOverlay.ArtistPicker ->
+                            ArtistPickerSheet(
+                                artistEditor.query,
+                                artistEditor.results,
                                 artistDirectory,
-                                { index ->
+                                { models.artistEditor?.setQuery(it) },
+                                { choice ->
+                                    if (overlay.index == null) models.artistEditor?.add(choice)
+                                    else models.artistEditor?.select(overlay.index, choice)
                                     models.artistEditor?.setQuery("")
-                                    navigation.open(AppOverlay.ArtistPicker(overlay.trackId, index))
-                                },
-                                {
-                                    models.artistEditor?.setQuery("")
-                                    navigation.open(AppOverlay.ArtistPicker(overlay.trackId, null))
-                                },
-                                { models.artistEditor?.remove(it) },
-                                { models.artistEditor?.save() },
-                                { models.artistEditor?.reset() },
-                                {
-                                    models.artistEditor?.closeDraft()
                                     finish(overlay)
+                                },
+                                {
+                                    models.artistEditor?.setQuery("")
+                                    finish(overlay)
+                                },
+                                artwork = artwork,
+                            )
+                        is AppOverlay.ArtistSelection ->
+                            artistTrack
+                                ?.takeIf { it.id == overlay.trackId }
+                                ?.let { value ->
+                                    val presentation = trackPresentation(value)
+                                    val credits =
+                                        if (
+                                            presentation.revision >= (ensuredArtists?.revision ?: 0)
+                                        )
+                                            presentation.artists
+                                        else ensuredArtists?.artists.orEmpty()
+                                    ArtistSelectionSheet(credits, ::openArtist, { finish(overlay) })
+                                }
+                        is AppOverlay.ArtistMergePicker ->
+                            ArtistPickerSheet(
+                                mergeQuery,
+                                LoadState(emptyList()),
+                                artistDirectory,
+                                { mergeQuery = it },
+                                { choice ->
+                                    if (choice is ArtistChoice.Existing) {
+                                        models.artistMerge?.preview(
+                                            overlay.artistId,
+                                            choice.id,
+                                            null,
+                                        )
+                                        finish(overlay)
+                                        navigation.open(AppOverlay.ArtistMerge)
+                                    }
+                                },
+                                { finish(overlay) },
+                                excluded = setOf(overlay.artistId),
+                                allowName = false,
+                                title = "Объединить с…",
+                            )
+                        is AppOverlay.ArtistMerges ->
+                            ArtistMergesSheet(
+                                overlay.artistId,
+                                artistDirectory,
+                                { id ->
+                                    models.artistMerge?.previewSplit(id)
+                                    navigation.open(AppOverlay.ArtistMerge)
+                                },
+                                { finish(overlay) },
+                            )
+                        AppOverlay.ArtistMerge ->
+                            ArtistMergeSheet(
+                                artistMerge,
+                                artistDirectory,
+                                {
+                                    if (artistMerge.split != null)
+                                        models.artistMerge?.confirmSplit()
+                                    else models.artistMerge?.confirm()
+                                },
+                                {
+                                    models.artistMerge?.closeDraft()
+                                    finish(overlay)
+                                },
+                                { source ->
+                                    artistMerge.merge?.let {
+                                        models.artistMerge?.preview(it.origin, it.target, source)
+                                    }
                                 },
                             )
-                        }
-                    is AppOverlay.ArtistPicker ->
-                        ArtistPickerSheet(
-                            artistEditor.query,
-                            artistEditor.results,
-                            artistDirectory,
-                            { models.artistEditor?.setQuery(it) },
-                            { choice ->
-                                if (overlay.index == null) models.artistEditor?.add(choice)
-                                else models.artistEditor?.select(overlay.index, choice)
-                                models.artistEditor?.setQuery("")
-                                finish(overlay)
-                            },
-                            {
-                                models.artistEditor?.setQuery("")
-                                finish(overlay)
-                            },
-                            artwork = artwork,
-                        )
-                    is AppOverlay.ArtistSelection ->
-                        artistTrack
-                            ?.takeIf { it.id == overlay.trackId }
-                            ?.let { value ->
-                                val presentation = trackPresentation(value)
-                                val credits =
-                                    if (presentation.revision >= (ensuredArtists?.revision ?: 0))
-                                        presentation.artists
-                                    else ensuredArtists?.artists.orEmpty()
-                                ArtistSelectionSheet(credits, ::openArtist, { finish(overlay) })
-                            }
-                    is AppOverlay.ArtistMergePicker ->
-                        ArtistPickerSheet(
-                            mergeQuery,
-                            LoadState(emptyList()),
-                            artistDirectory,
-                            { mergeQuery = it },
-                            { choice ->
-                                if (choice is ArtistChoice.Existing) {
-                                    models.artistMerge?.preview(overlay.artistId, choice.id, null)
-                                    finish(overlay)
-                                    navigation.open(AppOverlay.ArtistMerge)
-                                }
-                            },
-                            { finish(overlay) },
-                            excluded = setOf(overlay.artistId),
-                            allowName = false,
-                            title = "Объединить с…",
-                        )
-                    is AppOverlay.ArtistMerges ->
-                        ArtistMergesSheet(
-                            overlay.artistId,
-                            artistDirectory,
-                            { id ->
-                                models.artistMerge?.previewSplit(id)
-                                navigation.open(AppOverlay.ArtistMerge)
-                            },
-                            { finish(overlay) },
-                        )
-                    AppOverlay.ArtistMerge ->
-                        ArtistMergeSheet(
-                            artistMerge,
-                            artistDirectory,
-                            {
-                                if (artistMerge.split != null) models.artistMerge?.confirmSplit()
-                                else models.artistMerge?.confirm()
-                            },
-                            {
-                                models.artistMerge?.closeDraft()
-                                finish(overlay)
-                            },
-                            { source ->
-                                artistMerge.merge?.let {
-                                    models.artistMerge?.preview(it.origin, it.target, source)
-                                }
-                            },
-                        )
-                    AppOverlay.Queue ->
-                        QueueSheet(
-                            player,
-                            models.player,
-                            artwork,
-                            onOpenPublicPlaylist = {
-                                models.publicPlaylist?.refresh(it)
-                                navigation.push(AppRoute.PublicPlaylist(it))
-                            },
-                            onClose = { navigation.back() },
-                        )
-                    AppOverlay.Lyrics ->
-                        LyricsScreen(player, { navigation.back() }, models.player::loadLyrics)
-                    is AppOverlay.TrackMenu ->
-                        menuTrack
-                            ?.takeIf { it.id == overlay.trackId }
-                            ?.let { value ->
-                                val selection = selectDownload(value, player.snapshot)
-                                TrackMenu(
-                                    value,
-                                    value.id in favoriteIds,
-                                    selection != null,
-                                    {
-                                        scope.launch {
-                                            if (
-                                                action {
-                                                    models.actions.favorite(
-                                                        value,
-                                                        value.id !in favoriteIds,
-                                                    )
-                                                }
-                                            )
-                                                finish(overlay)
-                                        }
-                                    },
-                                    {
-                                        scope.launch {
-                                            if (action { models.actions.enqueue(value) }) {
-                                                val stillHere =
-                                                    navigation.state.value.overlays.lastOrNull() ==
-                                                        overlay
-                                                finish(overlay)
-                                                if (
-                                                    stillHere &&
-                                                        models.player.state.value.currentTrack ==
-                                                            null
-                                                )
-                                                    navigation.open(AppOverlay.Queue)
-                                            }
-                                        }
-                                    },
-                                    {
-                                        finish(overlay)
-                                        navigation.open(AppOverlay.PlaylistPicker(value.id))
-                                    },
-                                    {
-                                        selection?.let { chosen ->
+                        AppOverlay.Queue ->
+                            QueueSheet(
+                                player,
+                                models.player,
+                                artwork,
+                                onOpenPublicPlaylist = {
+                                    models.publicPlaylist?.refresh(it)
+                                    navigation.push(AppRoute.PublicPlaylist(it))
+                                },
+                                onClose = { navigation.back() },
+                            )
+                        AppOverlay.Lyrics ->
+                            LyricsScreen(player, { navigation.back() }, models.player::loadLyrics)
+                        is AppOverlay.TrackMenu ->
+                            menuTrack
+                                ?.takeIf { it.id == overlay.trackId }
+                                ?.let { value ->
+                                    val selection = selectDownload(value, player.snapshot)
+                                    TrackMenu(
+                                        value,
+                                        value.id in favoriteIds,
+                                        selection != null,
+                                        {
                                             scope.launch {
                                                 if (
                                                     action {
-                                                        models.actions.download(
-                                                            chosen.track,
-                                                            chosen.candidate,
+                                                        models.actions.favorite(
+                                                            value,
+                                                            value.id !in favoriteIds,
                                                         )
                                                     }
                                                 )
                                                     finish(overlay)
                                             }
-                                        }
-                                    },
-                                    {
-                                        navigation.select(AppTab.LIBRARY)
-                                        navigation.push(AppRoute.Downloads)
-                                    },
-                                    downloads.assets.any { it.trackId == value.id },
-                                    { finish(overlay) },
-                                    onPlayNext = {
-                                        scope.launch {
-                                            if (
-                                                action {
-                                                    models.actions.enqueue(
-                                                        value,
-                                                        app.musicplayer.queue.QueueInsertion.NEXT,
+                                        },
+                                        {
+                                            scope.launch {
+                                                if (action { models.actions.enqueue(value) }) {
+                                                    val stillHere =
+                                                        navigation.state.value.overlays
+                                                            .lastOrNull() == overlay
+                                                    finish(overlay)
+                                                    if (
+                                                        stillHere &&
+                                                            models.player.state.value
+                                                                .currentTrack == null
                                                     )
+                                                        navigation.open(AppOverlay.Queue)
                                                 }
-                                            )
-                                                finish(overlay)
-                                        }
-                                    },
-                                    onEditArtists =
-                                        if (models.artistEditor == null) null
-                                        else {
-                                            {
-                                                finish(overlay)
-                                                models.artistEditor.open(value)
-                                                navigation.open(AppOverlay.ArtistEditor(value.id))
                                             }
                                         },
-                                )
-                            }
-                    is AppOverlay.PlaylistPicker ->
-                        menuTrack
-                            ?.takeIf { it.id == overlay.trackId }
-                            ?.let { value ->
-                                PlaylistPicker(
-                                    library.data?.playlists.orEmpty(),
-                                    artwork,
-                                    { id ->
-                                        scope.launch {
-                                            if (action { models.actions.append(id, value) })
-                                                finish(overlay)
-                                        }
-                                    },
-                                    { edit = PlaylistEdit(null, "", value) },
-                                    { finish(overlay) },
-                                )
-                            }
-                    is AppOverlay.ConfirmDeletePlaylist ->
-                        MolpyDialog(
-                            onDismissRequest = { finish(overlay) },
-                            title = "Удалить плейлист?",
-                            icon = AppIcons.Trash,
-                            text = { Text("Треки останутся в избранном и на устройстве.") },
-                            confirmButton = {
-                                TextButton({
-                                    scope.launch {
-                                        if (action { models.library.delete(overlay.id) }) {
+                                        {
                                             finish(overlay)
-                                            if (
-                                                navigation.state.value.current ==
-                                                    AppRoute.Playlist(overlay.id)
-                                            )
-                                                navigation.back()
-                                        }
-                                    }
-                                }) {
-                                    Text("Удалить")
+                                            navigation.open(AppOverlay.PlaylistPicker(value.id))
+                                        },
+                                        {
+                                            selection?.let { chosen ->
+                                                scope.launch {
+                                                    if (
+                                                        action {
+                                                            models.actions.download(
+                                                                chosen.track,
+                                                                chosen.candidate,
+                                                            )
+                                                        }
+                                                    )
+                                                        finish(overlay)
+                                                }
+                                            }
+                                        },
+                                        {
+                                            navigation.select(AppTab.LIBRARY)
+                                            navigation.push(AppRoute.Downloads)
+                                        },
+                                        downloads.assets.any { it.trackId == value.id },
+                                        { finish(overlay) },
+                                        onPlayNext = {
+                                            scope.launch {
+                                                if (
+                                                    action {
+                                                        models.actions.enqueue(
+                                                            value,
+                                                            app.musicplayer.queue.QueueInsertion
+                                                                .NEXT,
+                                                        )
+                                                    }
+                                                )
+                                                    finish(overlay)
+                                            }
+                                        },
+                                        onEditArtists =
+                                            if (models.artistEditor == null) null
+                                            else {
+                                                {
+                                                    finish(overlay)
+                                                    models.artistEditor.open(value)
+                                                    navigation.open(
+                                                        AppOverlay.ArtistEditor(value.id)
+                                                    )
+                                                }
+                                            },
+                                    )
                                 }
-                            },
-                            dismissButton = { TextButton({ finish(overlay) }) { Text("Отмена") } },
-                        )
-                    else -> Unit
+                        is AppOverlay.PlaylistPicker ->
+                            menuTrack
+                                ?.takeIf { it.id == overlay.trackId }
+                                ?.let { value ->
+                                    PlaylistPicker(
+                                        library.data?.playlists.orEmpty(),
+                                        artwork,
+                                        { id ->
+                                            scope.launch {
+                                                if (action { models.actions.append(id, value) })
+                                                    finish(overlay)
+                                            }
+                                        },
+                                        { edit = PlaylistEdit(null, "", value) },
+                                        { finish(overlay) },
+                                    )
+                                }
+                        is AppOverlay.ConfirmDeletePlaylist ->
+                            MolpyDialog(
+                                onDismissRequest = { finish(overlay) },
+                                title = "Удалить плейлист?",
+                                icon = AppIcons.Trash,
+                                text = { Text("Треки останутся в избранном и на устройстве.") },
+                                confirmButton = {
+                                    TextButton({
+                                        scope.launch {
+                                            if (action { models.library.delete(overlay.id) }) {
+                                                finish(overlay)
+                                                if (
+                                                    navigation.state.value.current ==
+                                                        AppRoute.Playlist(overlay.id)
+                                                )
+                                                    navigation.back()
+                                            }
+                                        }
+                                    }) {
+                                        Text("Удалить")
+                                    }
+                                },
+                                dismissButton = {
+                                    TextButton({ finish(overlay) }) { Text("Отмена") }
+                                },
+                            )
+                        else -> Unit
+                    }
                 }
                 edit?.let { request ->
                     PlaylistEditDialog(

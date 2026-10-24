@@ -28,6 +28,7 @@ class AppearanceModel(
         )
     val state = mutable.asStateFlow()
     private val changes = Channel<AppTheme>(Channel.CONFLATED)
+    private var failedTarget: AppTheme? = null
 
     init {
         scope.launch {
@@ -41,10 +42,12 @@ class AppearanceModel(
                 mutable.update { it.copy(saving = true, error = null) }
                 try {
                     val result = preferences.setTheme(theme)
+                    failedTarget = if (result is AppResult.Failure) theme else null
                     mutable.update { it.copy(error = result.errorOrNull()) }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (_: Exception) {
+                    failedTarget = theme
                     mutable.update {
                         it.copy(
                             error = AppError(ErrorCode.DATABASE, "settings.appearance.save", true)
@@ -65,7 +68,12 @@ class AppearanceModel(
         changes.trySend(theme)
     }
 
+    fun retry() {
+        failedTarget?.let(::choose)
+    }
+
     fun clearError() {
+        failedTarget = null
         mutable.update { it.copy(error = null) }
     }
 

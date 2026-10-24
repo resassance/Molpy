@@ -10,6 +10,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import app.musicplayer.ui.theme.LocalAppTheme
+import app.musicplayer.ui.theme.ThemeWindowAppearance
 
 @Composable
 internal fun MolpyDialog(
@@ -36,7 +38,10 @@ internal fun MolpyDialog(
                 Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
             }
         },
-        text = { Column(Modifier.verticalScroll(rememberScrollState())) { text() } },
+        text = {
+            ThemeWindowAppearance(LocalAppTheme.current)
+            Column(Modifier.verticalScroll(rememberScrollState())) { text() }
+        },
         confirmButton = confirmButton,
         dismissButton = dismissButton,
     )

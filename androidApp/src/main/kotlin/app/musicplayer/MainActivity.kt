@@ -12,8 +12,11 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.core.view.WindowCompat
+import app.musicplayer.appearance.AppTheme
 import app.musicplayer.playback.PlayerConnection
 import app.musicplayer.ui.MolpyApp
 import app.musicplayer.ui.MolpyModels
@@ -50,6 +53,16 @@ class MainActivity : ComponentActivity() {
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
         setContent {
+            val appearance = model.appearance?.state?.collectAsState()?.value
+            val ready = appearance?.initialized == true
+            val theme = appearance?.theme
+            LaunchedEffect(ready, theme) {
+                val darkIcons = ready && theme == AppTheme.LIGHT
+                WindowCompat.getInsetsController(window, window.decorView).apply {
+                    isAppearanceLightStatusBars = darkIcons
+                    isAppearanceLightNavigationBars = darkIcons
+                }
+            }
             val navigation =
                 rememberSaveable(
                     saver =

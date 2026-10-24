@@ -14,6 +14,8 @@ import app.musicplayer.artwork.ArtworkLoader
 import app.musicplayer.model.*
 import app.musicplayer.ui.components.*
 import app.musicplayer.ui.present
+import app.musicplayer.ui.theme.LocalAppTheme
+import app.musicplayer.ui.theme.ThemeWindowAppearance
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -27,6 +29,7 @@ internal fun ArtistSheetContent(
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = MaterialTheme.colorScheme.surface,
     ) {
+        ThemeWindowAppearance(LocalAppTheme.current)
         Column(
             Modifier.fillMaxWidth()
                 .heightIn(max = 640.dp)

@@ -16,6 +16,7 @@ import app.musicplayer.ui.library.*
 import app.musicplayer.ui.navigation.*
 import app.musicplayer.ui.profile.*
 import app.musicplayer.ui.search.SearchScreen
+import app.musicplayer.ui.settings.AppearanceScreen
 import app.musicplayer.ui.settings.NetworkSettingsScreen
 import kotlinx.coroutines.launch
 
@@ -196,9 +197,14 @@ internal fun MolpyRouteContent(
                 onManageStorage,
             )
         AppRoute.History -> HistoryScreen(models.profile, artwork, back, onMenu, formatDate)
+        AppRoute.Appearance -> models.appearance?.let { AppearanceScreen(it, back) }
         AppRoute.Settings ->
-            NetworkSettingsScreen(models.settings, back, playback = models.playbackSettings) {
-                password ->
+            NetworkSettingsScreen(
+                models.settings,
+                back,
+                playback = models.playbackSettings,
+                onAppearance = models.appearance?.let { { navigation.push(AppRoute.Appearance) } },
+            ) { password ->
                 scope.launch { models.settings.apply(password) }
             }
     }

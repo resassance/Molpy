@@ -40,6 +40,8 @@ sealed interface AppRoute {
 
     data object History : AppRoute
 
+    data object Appearance : AppRoute
+
     data object Settings : AppRoute
 }
 
@@ -189,6 +191,7 @@ class AppNavigation(initial: NavigationState = NavigationState()) {
                     AppRoute.Downloads -> listOf("downloads")
                     AppRoute.History -> listOf("history")
                     AppRoute.Settings -> listOf("settings")
+                    AppRoute.Appearance -> listOf("appearance")
                 }
             return JsonArray(fields.map(::JsonPrimitive))
         }
@@ -219,6 +222,7 @@ class AppNavigation(initial: NavigationState = NavigationState()) {
                 "downloads" -> AppRoute.Downloads
                 "history" -> AppRoute.History
                 "settings" -> AppRoute.Settings
+                "appearance" -> AppRoute.Appearance
                 else -> error("Unknown route")
             }
         }

@@ -24,6 +24,7 @@ class SearchModel(
     private val search: MusicSearchCoordinator,
     private val player: QueuePlaybackPort,
     ownerScope: CoroutineScope,
+    private val rememberArtistArtwork: (SourceRef, Artwork) -> Unit = { _, _ -> },
 ) {
     private val job = SupervisorJob(ownerScope.coroutineContext[Job])
     private val scope = CoroutineScope(ownerScope.coroutineContext + job)
@@ -86,6 +87,7 @@ class SearchModel(
         update { it.copy(loading = true, error = null, loadingMore = false, moreError = null) }
         fun publish(page: SearchPage) {
             if (selected != generation) return
+            rememberArtwork(page)
             update {
                 it.copy(
                     page = if (paginated) refresh(it.page, page) else page,
@@ -142,7 +144,8 @@ class SearchModel(
                 ensureActive()
                 if (selected != generation) return@launch
                 when (result) {
-                    is AppResult.Success ->
+                    is AppResult.Success -> {
+                        rememberArtwork(result.value)
                         update {
                             it.copy(
                                 page = append(requireNotNull(it.page), result.value),
@@ -150,6 +153,7 @@ class SearchModel(
                                 moreError = null,
                             )
                         }
+                    }
                     is AppResult.Failure ->
                         update { it.copy(loadingMore = false, moreError = result.error) }
                 }
@@ -220,6 +224,21 @@ class SearchModel(
         ++generation
         ++commandGeneration
         job.cancel()
+    }
+
+    private fun rememberArtwork(page: SearchPage) {
+        page.items().filterIsInstance<SearchItem.ArtistItem>().forEach { artist ->
+            val source = artist.ref.source
+            val artwork = artist.artwork
+            if (
+                source != null &&
+                    validArtistArtworkSource(source) &&
+                    artwork != null &&
+                    artwork.kind != ArtworkKind.PLACEHOLDER &&
+                    (!artwork.remoteUrl.isNullOrBlank() || !artwork.localKey.isNullOrBlank())
+            )
+                rememberArtistArtwork(source, artwork)
+        }
     }
 
     private fun refresh(current: SearchPage?, initial: SearchPage): SearchPage {

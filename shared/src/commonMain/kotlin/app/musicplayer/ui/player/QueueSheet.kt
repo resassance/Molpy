@@ -16,6 +16,8 @@ import app.musicplayer.catalog.PublicPlaylistRef
 import app.musicplayer.model.*
 import app.musicplayer.queue.QueueOrder
 import app.musicplayer.ui.components.*
+import app.musicplayer.ui.theme.LocalAppTheme
+import app.musicplayer.ui.theme.ThemeWindowAppearance
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -35,6 +37,7 @@ fun QueueSheet(
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
     ) {
+        ThemeWindowAppearance(LocalAppTheme.current)
         Column(
             Modifier.fillMaxWidth()
                 .heightIn(max = 640.dp)

@@ -20,6 +20,8 @@ import app.musicplayer.playback.*
 import app.musicplayer.queue.*
 import app.musicplayer.search.MusicSearchCoordinator
 import app.musicplayer.search.SearchCoordinator
+import app.musicplayer.storage.RoomAppearancePreferencesRepository
+import app.musicplayer.storage.RoomArtistArtworkRepository
 import app.musicplayer.storage.RoomArtistRepository
 import app.musicplayer.storage.RoomAudioMetadataRepository
 import app.musicplayer.storage.RoomCollectionsRepository
@@ -37,6 +39,7 @@ import app.musicplayer.ui.library.LibraryModel
 import app.musicplayer.ui.player.PlayerModel
 import app.musicplayer.ui.profile.ProfileModel
 import app.musicplayer.ui.search.SearchModel
+import app.musicplayer.ui.settings.AppearanceModel
 import app.musicplayer.ui.settings.NetworkSettingsModel
 import app.musicplayer.ui.settings.PlaybackSettingsModel
 import app.musicplayer.ui.theme.PaletteModel
@@ -55,6 +58,12 @@ class AppGraph(private val context: Context) {
     val collections by lazy { RoomCollectionsRepository(database, System::currentTimeMillis) }
     val listening by lazy { RoomListeningRepository(database, System::currentTimeMillis) }
     val artists by lazy { RoomArtistRepository(database, System::currentTimeMillis) }
+    private val appearancePreferences by lazy {
+        RoomAppearancePreferencesRepository(database, scope, diagnostics::record)
+    }
+    private val artistArtworkRepository by lazy {
+        RoomArtistArtworkRepository(database, diagnostics::record)
+    }
     private val audioMetadata by lazy { RoomAudioMetadataRepository(database) }
     private val playbackPreferences by lazy {
         RoomPlaybackPreferencesRepository(database, scope, diagnostics::record)
@@ -97,6 +106,13 @@ class AppGraph(private val context: Context) {
     private var activeBrowse: BrowseCatalog? = null
     private var activeMusicSearch: MusicSearchPort? = null
     private var activeArtistSearch: ArtistSearchPort? = null
+    private var activeArtistArtwork: ArtistArtworkSource? = null
+    private val artistArtworkSource =
+        RoutedArtistArtworkSource(
+            { activeArtistArtwork },
+            { network.context.value },
+            diagnostics::record,
+        )
     private val artistSearch: ArtistSearchPort =
         RoutedArtistSearch({ activeArtistSearch }, { network.context.value })
     val browse: BrowseCatalog =
@@ -187,6 +203,7 @@ class AppGraph(private val context: Context) {
                         activeBrowse = null
                         activeMusicSearch = null
                         activeArtistSearch = null
+                        activeArtistArtwork = null
                         activeLyrics = null
                         catalogSession?.close()
                         catalogSession = null
@@ -203,6 +220,7 @@ class AppGraph(private val context: Context) {
                         activeBrowse = InnerTubeBrowseCatalog(session, context.generation, library)
                         activeArtistSearch =
                             InnerTubeArtistSearch(session, requireNotNull(activeBrowse))
+                        activeArtistArtwork = InnerTubeArtistArtworkSource(session)
                         activeLyrics = YouTubeLyrics(session)
                         models.removeAll { it.get() == null }
                         models.forEach { it.get()?.networkActivated() }
@@ -235,11 +253,26 @@ class AppGraph(private val context: Context) {
     @androidx.annotation.OptIn(markerClass = [UnstableApi::class])
     fun createModels(player: QueuePlaybackPort, ownerScope: CoroutineScope): MolpyModels {
         val directory = ArtistDirectoryModel(artists, ownerScope)
+        val artistArtwork =
+            ArtistArtworkCoordinator(
+                artistArtworkRepository,
+                artistArtworkSource,
+                ownerScope,
+                System::currentTimeMillis,
+                diagnostics::record,
+            )
         return MolpyModels(
                 PlayerModel(player, library, lyrics, ownerScope),
-                SearchModel(musicSearch, player, ownerScope),
+                SearchModel(musicSearch, player, ownerScope, artistArtwork::remember),
                 LibraryModel(collections, player, ownerScope, directory.state),
-                CatalogModel(browse, collections, player, ownerScope, directory.state),
+                CatalogModel(
+                    browse,
+                    collections,
+                    player,
+                    ownerScope,
+                    directory.state,
+                    artistArtwork::remember,
+                ),
                 ProfileModel(listening, player, ownerScope, directory.state),
                 DownloadsModel(downloads, { storageUsage.measure() }, ownerScope),
                 NetworkSettingsModel(network, library, secrets, ownerScope),
@@ -247,11 +280,14 @@ class AppGraph(private val context: Context) {
                 TrackActions(library, collections, player, downloads),
                 playbackSettings = PlaybackSettingsModel(playbackPreferences, ownerScope),
                 artists = directory,
-                artistEditor = ArtistEditorModel(artists, artistSearch, ownerScope),
+                artistEditor =
+                    ArtistEditorModel(artists, artistSearch, ownerScope, artistArtwork::remember),
                 artistMerge = ArtistMergeModel(artists, ownerScope),
                 artistRepository = artists,
                 publicPlaylist = PublicPlaylistModel(browse, player, ownerScope),
                 sampleArtworkPixels = { artwork.samplePixels(context, it) },
+                appearance = AppearanceModel(appearancePreferences, ownerScope),
+                artistArtwork = artistArtwork,
             )
             .also { models.add(WeakReference(it)) }
     }

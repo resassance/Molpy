@@ -45,6 +45,7 @@ class CatalogModel(
     private val player: QueuePlaybackPort,
     ownerScope: CoroutineScope,
     private val artists: StateFlow<LoadState<ArtistDirectory>>? = null,
+    private val rememberArtistArtwork: (SourceRef, Artwork) -> Unit = { _, _ -> },
 ) {
     private val job = SupervisorJob(ownerScope.coroutineContext[Job])
     private val scope = CoroutineScope(ownerScope.coroutineContext + job)
@@ -209,7 +210,18 @@ class CatalogModel(
                                         tracks = LoadState(data.tracks),
                                     )
                                 }
-                            is ArtistCatalog ->
+                            is ArtistCatalog -> {
+                                val source = data.artist.source
+                                val artwork = data.artwork
+                                if (
+                                    source != null &&
+                                        validArtistArtworkSource(source) &&
+                                        artwork != null &&
+                                        artwork.kind != ArtworkKind.PLACEHOLDER &&
+                                        (!artwork.remoteUrl.isNullOrBlank() ||
+                                            !artwork.localKey.isNullOrBlank())
+                                )
+                                    rememberArtistArtwork(source, artwork)
                                 update {
                                     it.copy(
                                         artistRef =
@@ -222,6 +234,7 @@ class CatalogModel(
                                         singles = LoadState(data.singles),
                                     )
                                 }
+                            }
                         }
                 }
             } catch (e: CancellationException) {

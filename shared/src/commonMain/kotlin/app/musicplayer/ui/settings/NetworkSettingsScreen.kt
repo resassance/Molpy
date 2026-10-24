@@ -118,6 +118,7 @@ fun NetworkSettingsScreen(
     model: NetworkSettingsModel,
     onBack: () -> Unit,
     playback: PlaybackSettingsModel? = null,
+    onAppearance: (() -> Unit)? = null,
     onApply: (CharArray?) -> Unit,
 ) {
     val state by model.state.collectAsState()
@@ -127,6 +128,16 @@ fun NetworkSettingsScreen(
             Modifier.weight(1f),
             contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
         ) {
+            onAppearance?.let { open ->
+                item {
+                    TextButton(
+                        onClick = open,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                    ) {
+                        Text("Оформление", modifier = Modifier.fillMaxWidth())
+                    }
+                }
+            }
             playback?.let { item { PlaybackSettingsSection(it) } }
             item {
                 NetworkSettingsFields(

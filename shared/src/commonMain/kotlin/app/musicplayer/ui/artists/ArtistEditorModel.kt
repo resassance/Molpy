@@ -1,6 +1,7 @@
 package app.musicplayer.ui.artists
 
 import app.musicplayer.artists.*
+import app.musicplayer.catalog.validArtistArtworkSource
 import app.musicplayer.model.*
 import app.musicplayer.ui.components.LoadState
 import kotlinx.coroutines.*
@@ -21,6 +22,7 @@ class ArtistEditorModel(
     private val repository: ArtistRepository,
     private val search: ArtistSearchPort,
     ownerScope: CoroutineScope,
+    private val rememberArtistArtwork: (SourceRef, Artwork) -> Unit = { _, _ -> },
 ) {
     private val job = SupervisorJob(ownerScope.coroutineContext[Job])
     private val scope = CoroutineScope(ownerScope.coroutineContext + job)
@@ -78,7 +80,8 @@ class ArtistEditorModel(
             try {
                 val result = search.search(query.trim())
                 ensureActive()
-                if (selected == generation && serial == queryGeneration)
+                if (selected == generation && serial == queryGeneration) {
+                    result.valueOrNull()?.forEach(::rememberArtwork)
                     mutable.update {
                         it.copy(
                             results =
@@ -88,6 +91,7 @@ class ArtistEditorModel(
                                 }
                         )
                     }
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -163,6 +167,11 @@ class ArtistEditorModel(
                             else it
                         }
                 ensureActive()
+                if (selected != generation) return@launch
+                if (!reset)
+                    choices.filterIsInstance<ArtistChoice.Catalog>().forEach {
+                        rememberArtwork(it.profile)
+                    }
                 val result =
                     if (reset) repository.resetOverride(track.id, draft.expected)
                     else repository.saveOverride(track, choices, draft.expected)
@@ -223,6 +232,17 @@ class ArtistEditorModel(
     fun close() {
         closeDraft()
         job.cancel()
+    }
+
+    private fun rememberArtwork(hit: ArtistCatalogHit) {
+        val artwork = hit.artwork
+        if (
+            validArtistArtworkSource(hit.source) &&
+                artwork != null &&
+                artwork.kind != ArtworkKind.PLACEHOLDER &&
+                (!artwork.remoteUrl.isNullOrBlank() || !artwork.localKey.isNullOrBlank())
+        )
+            rememberArtistArtwork(hit.source, artwork)
     }
 
     private fun error(e: Exception, operation: String) =
