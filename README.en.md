@@ -11,10 +11,10 @@
   <a href="https://developer.android.com/media/media3"><img alt="Media3 1.11.1" src="https://img.shields.io/badge/Media3-1.11.1-00897B?style=for-the-badge&logo=android&logoColor=white"></a>
 </p>
 
-[![Prerelease](https://img.shields.io/badge/release-v0.1.0--alpha.13-D97706?style=flat-square)](https://github.com/resassance/Molpy/releases/tag/v0.1.0-alpha.13)
+[![Prerelease](https://img.shields.io/badge/release-v0.1.0--alpha.14-D97706?style=flat-square)](https://github.com/resassance/Molpy/releases/tag/v0.1.0-alpha.14)
 [![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0--only-546E7A?style=flat-square)](LICENSE)
 
-**[Download APK](https://github.com/resassance/Molpy/releases/download/v0.1.0-alpha.13/Molpy-v0.1.0-alpha.13-debug.apk)** · [Release page](https://github.com/resassance/Molpy/releases/tag/v0.1.0-alpha.13) · [Report an issue](https://github.com/resassance/Molpy/issues)
+**[Download APK](https://github.com/resassance/Molpy/releases/download/v0.1.0-alpha.14/Molpy-v0.1.0-alpha.14-debug.apk)** · [Release page](https://github.com/resassance/Molpy/releases/tag/v0.1.0-alpha.14) · [Report an issue](https://github.com/resassance/Molpy/issues)
 
 ## Contents
 
@@ -41,17 +41,19 @@ No Molpy account or dedicated backend is required. Google sign-in is not impleme
 | --- | --- |
 | Search | Combined results and filters for tracks, artists, albums, and playlists; artist and album pages; YouTube search fallback |
 | Public playlists | Start from any track or a random song, load the remaining queue in the background, and continue after restarting |
-| Player | Play, pause, seek, next and previous track, position, duration, and playback buffer |
+| Player | Full player with artwork and a line of lyrics; play, pause, seek, next and previous track, position, duration, and playback buffer |
 | Volume | Source-based volume normalization for online and offline playback; can be disabled in settings |
-| Queue | Play next or add to the end, shuffle, reorder, and go back through playback history; keep the queue between launches |
-| Library | Favorites, local playlists, albums, and artists; shuffled collection playback and a separate downloads section |
+| Queue | Dedicated queue screen; play next or add to the end, shuffle, reorder, and go back through playback history; keep the queue between launches |
+| Library | Favorites card with a Play button, collection and download shortcuts, and shelves for your playlists, artists, and albums; shuffled collection playback |
 | Profile | Total listening time, most-played tracks and artists with listening time, and history |
-| Artists | Edit a track’s credits, choose a YouTube Music profile, merge duplicate artists, and undo merges |
-| Appearance | Dark interface with artwork colors, compact collection headers, and a mini player; full player with neighboring covers and a line of lyrics |
+| Artists | YouTube Music profile photos; edit a track’s credits, choose a profile, merge duplicate artists, and undo merges |
+| Appearance | Dark, Classic, and Light themes; playlist, album, and artist grids with captions below the artwork, compact collection headers, and a mini player |
 | Background playback | Android media session and system playback controls |
-| Lyrics | YouTube Music and LRCLIB; the current line in the player and full lyrics when available for the recording |
+| Lyrics | YouTube Music and LRCLIB; the current line in the player and a dedicated full lyrics screen when available for the recording |
 | Network | System connection, HTTP CONNECT proxy with no authentication or username/password, and SOCKS5 without authentication |
 | Downloads | One track at a time, pause and resume, deletion, storage usage, and local playback |
+
+Choose a theme in Settings → Appearance: near-black Dark, warm brown Classic, or Light. Your choice is kept between launches. When an artist photo is unavailable, an avatar with a letter from the name remains.
 
 You can edit the artists for one track from its menu. To combine duplicate artist profiles, use the artist menu; merges can be undone.
 
@@ -70,7 +72,7 @@ Windows and Linux are planned after Android, followed by web. Accounts, cloud sy
 
 **Requirements:** Android 6.0 / API 23 or later, on a 64-bit `arm64-v8a` device or `x86_64` emulator/device. The APK does not include 32-bit ABIs.
 
-1. Open [release v0.1.0-alpha.13](https://github.com/resassance/Molpy/releases/tag/v0.1.0-alpha.13) and download `Molpy-v0.1.0-alpha.13-debug.apk`.
+1. Open [release v0.1.0-alpha.14](https://github.com/resassance/Molpy/releases/tag/v0.1.0-alpha.14) and download `Molpy-v0.1.0-alpha.14-debug.apk`.
 2. Install the APK, allowing installation from your chosen source in Android settings if prompted.
 3. If YouTube is unavailable on your network, enable a system VPN or configure a proxy in Molpy’s network settings.
 4. Search by artist and title and select a recording from the results.
