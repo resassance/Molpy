@@ -79,6 +79,12 @@ internal fun MolpyRouteContent(
                         artist,
                         { navigation.push(AppRoute.Downloads) },
                         models.library::retry,
+                        onPlayFavorites = {
+                            models.library.play(collection.data?.favorites.orEmpty(), 0)
+                        },
+                        onSearch = { navigation.select(AppTab.SEARCH) },
+                        onProfile = { navigation.select(AppTab.PROFILE) },
+                        onSettings = { navigation.push(AppRoute.Settings) },
                     )
                 AppTab.SEARCH ->
                     SearchScreen(

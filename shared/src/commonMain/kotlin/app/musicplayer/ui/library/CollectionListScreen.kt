@@ -1,11 +1,11 @@
 package app.musicplayer.ui.library
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
+import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.*
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.musicplayer.artwork.ArtworkLoader
 import app.musicplayer.collections.*
@@ -46,33 +46,29 @@ fun CollectionListScreen(
         if (section == LibrarySection.FAVORITES)
             ArtworkAmbientBackground(colors, Modifier.matchParentSize())
         Column(Modifier.fillMaxSize()) {
-            ScreenHeader(
+            CompactHeader(
                 if (section == LibrarySection.FAVORITES) "" else section.title,
                 onBack,
                 if (section == LibrarySection.PLAYLISTS) {
                     { IconButton(onCreate) { Icon(AppIcons.Plus, "Создать плейлист") } }
                 } else null,
             )
-            LazyColumn(
-                Modifier.weight(1f),
-                state = rememberLazyListState(),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-            ) {
-                if (section == LibrarySection.FAVORITES)
+            if (section == LibrarySection.FAVORITES) {
+                LazyColumn(
+                    Modifier.weight(1f),
+                    state = rememberLazyListState(),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                ) {
                     item(key = "header") {
                         CollectionHeader(
-                            title = section.title,
-                            countLabel = trackCount(data.favorites.size),
+                            section.title,
+                            trackCount(data.favorites.size),
                             artwork = { modifier ->
                                 if (data.favorites.isEmpty())
-                                    Surface(
-                                        modifier,
-                                        shape =
-                                            androidx.compose.foundation.shape.RoundedCornerShape(
-                                                12.dp
-                                            ),
-                                    ) {
-                                        Box(contentAlignment = Alignment.Center) {
+                                    Surface(modifier) {
+                                        Box(
+                                            contentAlignment = androidx.compose.ui.Alignment.Center
+                                        ) {
                                             Icon(AppIcons.Heart, null, Modifier.size(40.dp))
                                         }
                                     }
@@ -91,79 +87,95 @@ fun CollectionListScreen(
                                 else ({ onShuffle(data.favorites) }),
                         )
                     }
-                when (section) {
-                    LibrarySection.FAVORITES ->
-                        itemsIndexed(data.favorites, key = { _, track -> track.id.value }) {
-                            index,
-                            track ->
-                            TrackRow(
-                                track,
-                                artwork,
-                                { onPlay(data.favorites, index) },
-                                { onMenu(track) },
-                                showAlbum = false,
-                            )
-                        }
-                    LibrarySection.PLAYLISTS ->
-                        items(data.playlists, key = { it.id.value }) { playlist ->
-                            Row(
-                                Modifier.fillMaxWidth()
-                                    .clickable { onPlaylist(playlist) }
-                                    .padding(vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                PlaylistCollage(playlist.artworks, artwork, Modifier.size(64.dp))
-                                Column(Modifier.padding(start = 12.dp)) {
-                                    Text(playlist.name)
-                                    Text(
-                                        trackCount(playlist.trackCount),
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                            }
-                        }
-                    LibrarySection.ALBUMS ->
-                        items(data.albums, key = { it.key }) { album ->
-                            Row(
-                                Modifier.fillMaxWidth()
-                                    .clickable { onAlbum(album) }
-                                    .padding(vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                TrackArtwork(album.artwork, artwork, Modifier.size(64.dp))
-                                Text(album.ref.name, Modifier.padding(start = 12.dp))
-                            }
-                        }
-                    LibrarySection.ARTISTS ->
-                        items(data.artists, key = { it.key }) { artist ->
-                            Row(
-                                Modifier.fillMaxWidth()
-                                    .clickable { onArtist(artist) }
-                                    .padding(vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                ArtistAvatar(artist.ref.name, Modifier.size(64.dp))
-                                Text(artist.ref.name, Modifier.padding(start = 12.dp))
-                            }
-                        }
-                }
-                val empty =
-                    when (section) {
-                        LibrarySection.FAVORITES -> data.favorites.isEmpty()
-                        LibrarySection.PLAYLISTS -> data.playlists.isEmpty()
-                        LibrarySection.ALBUMS -> data.albums.isEmpty()
-                        LibrarySection.ARTISTS -> data.artists.isEmpty()
-                    }
-                if (empty)
-                    item {
-                        Text(
-                            "Здесь пока пусто",
-                            Modifier.padding(vertical = 24.dp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    if (state.loading)
+                        item(key = "loading") { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+                    itemsIndexed(data.favorites, key = { _, track -> track.id.value }) {
+                        index,
+                        track ->
+                        TrackRow(
+                            track,
+                            artwork,
+                            { onPlay(data.favorites, index) },
+                            { onMenu(track) },
+                            showAlbum = false,
                         )
                     }
-                state.error?.let { item { InlineError(it) } }
+                    if (data.favorites.isEmpty()) item(key = "empty") { EmptyCollection() }
+                    state.error?.let { item(key = "error") { InlineError(it) } }
+                }
+            } else {
+                LazyVerticalGrid(
+                    GridCells.Adaptive(140.dp),
+                    Modifier.weight(1f),
+                    state = rememberLazyGridState(),
+                    contentPadding = PaddingValues(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(20.dp),
+                ) {
+                    if (state.loading)
+                        item(key = "loading", span = { GridItemSpan(maxLineSpan) }) {
+                            LinearProgressIndicator(Modifier.fillMaxWidth())
+                        }
+                    state.error?.let {
+                        item(key = "error", span = { GridItemSpan(maxLineSpan) }) {
+                            InlineError(it)
+                        }
+                    }
+                    when (section) {
+                        LibrarySection.PLAYLISTS ->
+                            items(data.playlists, key = { it.id.value }) { playlist ->
+                                CollectionTile(
+                                    playlist.name,
+                                    trackCount(playlist.trackCount),
+                                    { onPlaylist(playlist) },
+                                ) {
+                                    PlaylistCollage(playlist.artworks, artwork, it)
+                                }
+                            }
+                        LibrarySection.ALBUMS ->
+                            items(data.albums, key = { it.key }) { album ->
+                                CollectionTile(
+                                    album.ref.name,
+                                    album.tracks
+                                        .firstOrNull()
+                                        ?.let { trackPresentation(it).artists }
+                                        .orEmpty()
+                                        .joinToString { it.name },
+                                    { onAlbum(album) },
+                                ) {
+                                    TrackArtwork(album.artwork, artwork, it)
+                                }
+                            }
+                        LibrarySection.ARTISTS ->
+                            items(data.artists, key = { it.key }) { artist ->
+                                CollectionTile(artist.ref.name, null, { onArtist(artist) }) {
+                                    ArtistPhoto(artist.ref.name, artist.ref.source, artwork, it)
+                                }
+                            }
+                        LibrarySection.FAVORITES -> Unit
+                    }
+                    val empty =
+                        when (section) {
+                            LibrarySection.PLAYLISTS -> data.playlists.isEmpty()
+                            LibrarySection.ALBUMS -> data.albums.isEmpty()
+                            LibrarySection.ARTISTS -> data.artists.isEmpty()
+                            LibrarySection.FAVORITES -> false
+                        }
+                    if (empty)
+                        item(key = "empty", span = { GridItemSpan(maxLineSpan) }) {
+                            EmptyCollection()
+                        }
+                }
             }
         }
     }
+}
+
+@Composable
+private fun EmptyCollection() {
+    Text(
+        "Здесь пока пусто",
+        Modifier.padding(vertical = 24.dp),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
