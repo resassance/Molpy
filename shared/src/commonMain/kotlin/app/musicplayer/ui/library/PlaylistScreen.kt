@@ -40,7 +40,7 @@ fun PlaylistScreen(
     Box(Modifier.fillMaxSize()) {
         ArtworkAmbientBackground(colors, Modifier.matchParentSize())
         Column(Modifier.fillMaxSize()) {
-            ScreenHeader(if (detail == null) "Плейлист" else "", onBack) {
+            CompactHeader(if (detail == null) "Плейлист" else "", onBack) {
                 Box {
                     IconButton({ menu = true }, enabled = detail != null) {
                         Icon(AppIcons.More, "Действия с плейлистом")

@@ -1,16 +1,11 @@
 package app.musicplayer.ui.catalog
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.musicplayer.artwork.ArtworkLoader
 import app.musicplayer.catalog.*
@@ -36,203 +31,199 @@ fun CatalogScreen(
     val colors = rememberArtworkColors(if (state.albumRef != null) state.artwork else null)
     Box(Modifier.fillMaxSize()) {
         if (state.albumRef != null) ArtworkAmbientBackground(colors, Modifier.matchParentSize())
-        Column(Modifier.fillMaxSize()) {
-            var menu by remember { mutableStateOf(false) }
-            ScreenHeader(
-                if (state.albumRef != null) "Альбом" else "Артист",
-                onBack,
-                action =
-                    if (onMerge == null) null
-                    else {
-                        {
-                            Box {
-                                IconButton({ menu = true }) {
-                                    Icon(AppIcons.More, "Действия с артистом")
-                                }
-                                DropdownMenu(menu, { menu = false }) {
-                                    DropdownMenuItem(
-                                        text = { Text("Объединить с…") },
-                                        leadingIcon = { Icon(AppIcons.Plus, null) },
-                                        onClick = {
-                                            menu = false
-                                            onMerge()
-                                        },
-                                    )
-                                    onMerges?.let { action ->
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val releaseColumns = maxOf(2, ((maxWidth - 16.dp) / 156.dp).toInt())
+            Column(Modifier.fillMaxSize()) {
+                var menu by remember { mutableStateOf(false) }
+                CompactHeader(
+                    "",
+                    onBack,
+                    action =
+                        if (onMerge == null) null
+                        else {
+                            {
+                                Box {
+                                    IconButton({ menu = true }) {
+                                        Icon(AppIcons.More, "Действия с артистом")
+                                    }
+                                    DropdownMenu(menu, { menu = false }) {
                                         DropdownMenuItem(
-                                            text = { Text("Объединённые карточки") },
-                                            leadingIcon = { Icon(AppIcons.Edit, null) },
+                                            text = { Text("Объединить с…") },
+                                            leadingIcon = { Icon(AppIcons.Plus, null) },
                                             onClick = {
                                                 menu = false
-                                                action()
+                                                onMerge()
                                             },
                                         )
+                                        onMerges?.let { action ->
+                                            DropdownMenuItem(
+                                                text = { Text("Объединённые карточки") },
+                                                leadingIcon = { Icon(AppIcons.Edit, null) },
+                                                onClick = {
+                                                    menu = false
+                                                    action()
+                                                },
+                                            )
+                                        }
                                     }
                                 }
                             }
-                        }
-                    },
-            )
-            PrimaryTabRow(
-                selectedTabIndex = state.section.ordinal,
-                containerColor = Color.Transparent,
-            ) {
-                CatalogSection.entries.forEach { section ->
-                    Tab(
-                        state.section == section,
-                        { model.selectSection(section) },
-                        text = { Text(if (section == CatalogSection.ALL) "Все" else "Избранное") },
-                    )
-                }
-            }
-            LazyColumn(
-                Modifier.weight(1f),
-                state = rememberLazyListState(),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
-            ) {
-                item {
-                    if (state.albumRef != null) {
+                        },
+                )
+                LazyColumn(
+                    Modifier.weight(1f),
+                    state = rememberLazyListState(),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                ) {
+                    item {
                         val tracks =
                             if (state.section == CatalogSection.FAVORITES) state.favoriteTracks
                             else state.allTracks()
                         val complete =
-                            !state.tracks.loading &&
-                                state.tracks.error == null &&
-                                state.tracks.data?.next == null &&
-                                (state.localTracks.isNotEmpty() || state.tracks.data != null)
+                            state.section == CatalogSection.FAVORITES ||
+                                (!state.tracks.loading &&
+                                    state.tracks.error == null &&
+                                    state.tracks.data?.next == null &&
+                                    (state.tracks.data != null ||
+                                        (state.albumRef != null && state.localTracks.isNotEmpty())))
                         CollectionHeader(
                             title = state.title,
-                            countLabel = trackCount(tracks.size),
+                            countLabel =
+                                if (state.albumRef != null) {
+                                    val artists =
+                                        state.artists.map { artistName(it) }.joinToString()
+                                    listOf(artists, trackCount(tracks.size))
+                                        .filter { it.isNotBlank() }
+                                        .joinToString(" · ")
+                                } else
+                                    playedMs?.let { "Прослушано: ${formatListeningTime(it)}" }
+                                        ?: "Прослушано: —",
                             artwork = { modifier ->
-                                TrackArtwork(
-                                    state.artwork ?: Artwork(ArtworkKind.PLACEHOLDER, null, null),
-                                    artwork,
-                                    modifier,
-                                )
+                                if (state.artistRef != null)
+                                    ArtistPhoto(
+                                        state.title,
+                                        state.artistRef?.source,
+                                        artwork,
+                                        modifier,
+                                    )
+                                else
+                                    TrackArtwork(
+                                        state.artwork
+                                            ?: Artwork(ArtworkKind.PLACEHOLDER, null, null),
+                                        artwork,
+                                        modifier,
+                                    )
                             },
                             onPlay = if (tracks.isEmpty()) null else ({ model.play(0) }),
                             onShuffle =
                                 if (tracks.isEmpty() || !complete || onShuffle == null) null
                                 else ({ onShuffle(tracks) }),
                             supportingContent = {
-                                if (state.artists.isNotEmpty())
+                                if (state.albumRef == null && state.artists.isNotEmpty())
                                     Text(
                                         state.artists.map { artistName(it) }.joinToString(),
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
                             },
                         )
-                    } else
-                        Column(
-                            Modifier.fillMaxWidth(),
-                            horizontalAlignment = Alignment.CenterHorizontally,
+                    }
+                    item(key = "filters") {
+                        Row(
+                            Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            val art = state.artwork
-                            if (art != null)
-                                TrackArtwork(
-                                    art,
-                                    artwork,
-                                    Modifier.size(160.dp)
-                                        .then(
-                                            if (state.artistRef != null) Modifier.clip(CircleShape)
-                                            else Modifier
-                                        ),
+                            CatalogSection.entries.forEach { section ->
+                                FilterChip(
+                                    selected = state.section == section,
+                                    onClick = { model.selectSection(section) },
+                                    label = {
+                                        Text(
+                                            if (section == CatalogSection.ALL) "Все"
+                                            else "Избранное"
+                                        )
+                                    },
+                                    modifier = Modifier.heightIn(min = 48.dp),
+                                    shape = CircleShape,
                                 )
-                            else if (state.artistRef != null)
-                                ArtistAvatar(state.title, Modifier.size(96.dp))
-                            Text(
-                                state.title,
-                                Modifier.padding(top = 16.dp, bottom = 4.dp),
-                                style = MaterialTheme.typography.headlineMedium,
-                            )
-                            if (state.artists.isNotEmpty())
-                                Text(
-                                    state.artists.map { artistName(it) }.joinToString(),
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            if (state.artistId != null)
-                                Text(
-                                    playedMs?.let { "Прослушано: ${formatListeningTime(it)}" }
-                                        ?: "Прослушано: —",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            Spacer(Modifier.height(16.dp))
-                        }
-                }
-                if (state.section == CatalogSection.FAVORITES) {
-                    state.collectionError?.let { item { InlineError(it) } }
-                    itemsIndexed(state.favoriteTracks, key = { _, track -> track.id.value }) {
-                        index,
-                        track ->
-                        TrackRow(
-                            track,
-                            artwork,
-                            { model.play(index) },
-                            { onMenu(track) },
-                            showAlbum = false,
-                        )
-                    }
-                    if (state.favoriteTracks.isEmpty())
-                        item {
-                            Text(
-                                "Здесь пока нет избранных треков",
-                                Modifier.padding(vertical = 24.dp),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                } else {
-                    if (state.tracks.loading)
-                        item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
-                    state.tracks.error?.let { item { InlineError(it, model::retry) } }
-                    itemsIndexed(
-                        state.allTracks(),
-                        key = { index, track -> "$index:${track.id.value}" },
-                    ) { index, track ->
-                        TrackRow(
-                            track,
-                            artwork,
-                            { model.play(index) },
-                            { onMenu(track) },
-                            showAlbum = false,
-                        )
-                    }
-                    if (state.tracks.data?.next != null)
-                        item {
-                            TextButton(
-                                { model.loadMore(CatalogPart.TRACKS) },
-                                enabled = !state.tracks.loading,
-                            ) {
-                                Text("Ещё треки")
                             }
                         }
-                    if (
-                        !state.tracks.loading &&
-                            state.tracks.error == null &&
-                            state.allTracks().isEmpty()
-                    )
-                        item {
-                            Text(
-                                "Доступных треков пока нет",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    }
+                    if (state.section == CatalogSection.FAVORITES) {
+                        state.collectionError?.let { item { InlineError(it) } }
+                        itemsIndexed(state.favoriteTracks, key = { _, track -> track.id.value }) {
+                            index,
+                            track ->
+                            TrackRow(
+                                track,
+                                artwork,
+                                { model.play(index) },
+                                { onMenu(track) },
+                                showAlbum = false,
                             )
                         }
-                    releaseSection(
-                        "Релизы",
-                        state.albums,
-                        artwork,
-                        { model.loadMore(CatalogPart.ALBUMS) },
-                        onAlbum,
-                    )
-                    releaseSection(
-                        "Синглы и EP",
-                        state.singles,
-                        artwork,
-                        { model.loadMore(CatalogPart.SINGLES) },
-                        onAlbum,
-                    )
+                        if (state.favoriteTracks.isEmpty())
+                            item {
+                                Text(
+                                    "Здесь пока нет избранных треков",
+                                    Modifier.padding(vertical = 24.dp),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                    } else {
+                        if (state.tracks.loading)
+                            item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+                        state.tracks.error?.let { item { InlineError(it, model::retry) } }
+                        itemsIndexed(
+                            state.allTracks(),
+                            key = { index, track -> "$index:${track.id.value}" },
+                        ) { index, track ->
+                            TrackRow(
+                                track,
+                                artwork,
+                                { model.play(index) },
+                                { onMenu(track) },
+                                showAlbum = false,
+                            )
+                        }
+                        if (state.tracks.data?.next != null)
+                            item {
+                                TextButton(
+                                    { model.loadMore(CatalogPart.TRACKS) },
+                                    enabled = !state.tracks.loading,
+                                ) {
+                                    Text("Ещё треки")
+                                }
+                            }
+                        if (
+                            !state.tracks.loading &&
+                                state.tracks.error == null &&
+                                state.allTracks().isEmpty()
+                        )
+                            item {
+                                Text(
+                                    "Доступных треков пока нет",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        releaseSection(
+                            "Дискография",
+                            state.albums,
+                            artwork,
+                            { model.loadMore(CatalogPart.ALBUMS) },
+                            onAlbum,
+                            releaseColumns,
+                        )
+                        releaseSection(
+                            "Синглы и EP",
+                            state.singles,
+                            artwork,
+                            { model.loadMore(CatalogPart.SINGLES) },
+                            onAlbum,
+                            releaseColumns,
+                        )
+                    }
+                    state.commandError?.let { item { InlineError(it) } }
                 }
-                state.commandError?.let { item { InlineError(it) } }
             }
         }
     }
@@ -244,31 +235,41 @@ private fun LazyListScope.releaseSection(
     artwork: ArtworkLoader,
     onMore: () -> Unit,
     onAlbum: (AlbumRef) -> Unit,
+    columns: Int,
 ) {
-    if (state.data?.items?.isNotEmpty() == true) {
-        item { SectionHeader(title) }
+    val releases = state.data?.items.orEmpty()
+    if (releases.isNotEmpty()) {
+        item(key = "release:$title") { SectionHeader(title) }
         itemsIndexed(
-            state.data.items,
-            key = { index, card -> "$index:${card.album.source?.id.orEmpty()}" },
-        ) { _, album ->
+            releases.chunked(columns),
+            key = { index, cards ->
+                "$title:$index:${cards.first().album.source}"
+            },
+        ) { _, cards ->
             Row(
-                Modifier.fillMaxWidth().clickable { onAlbum(album.album) }.padding(vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                TrackArtwork(album.artwork, artwork, Modifier.size(64.dp))
-                Text(
-                    album.album.name,
-                    Modifier.padding(start = 12.dp).weight(1f),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    fontWeight = FontWeight.Medium,
-                )
+                cards.forEach { album ->
+                    CollectionTile(
+                        album.album.name,
+                        album.artists
+                            .map { artistName(it) }
+                            .joinToString()
+                            .takeIf { it.isNotBlank() },
+                        { onAlbum(album.album) },
+                        Modifier.weight(1f),
+                    ) { modifier ->
+                        TrackArtwork(album.artwork, artwork, modifier)
+                    }
+                }
+                repeat(columns - cards.size) { Spacer(Modifier.weight(1f)) }
             }
         }
     }
-    state.error?.let { item { InlineError(it, onMore) } }
+    state.error?.let { item(key = "release-error:$title") { InlineError(it, onMore) } }
     if (state.data?.next != null)
-        item {
+        item(key = "release-more:$title") {
             TextButton(onMore, enabled = !state.loading) {
                 Text(if (state.loading) "Загружаем…" else "Ещё релизы")
             }

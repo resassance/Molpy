@@ -19,31 +19,31 @@ internal fun CollectionHeader(
     supportingContent: @Composable ColumnScope.() -> Unit = {},
     onShuffle: (() -> Unit)? = null,
 ) {
-    Column(modifier.fillMaxWidth().padding(bottom = 16.dp)) {
+    Column(modifier.fillMaxWidth().padding(bottom = 8.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            artwork(Modifier.size(112.dp))
-            Spacer(Modifier.width(16.dp))
+            artwork(Modifier.size(88.dp))
+            Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(
                     title,
-                    style = MaterialTheme.typography.headlineSmall,
+                    style = MaterialTheme.typography.titleLarge,
                     maxLines = 3,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
                     countLabel,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodySmall,
                 )
                 if (onPlay != null || onShuffle != null) {
                     Row(
-                        Modifier.padding(top = 12.dp),
+                        Modifier.padding(top = 4.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         onPlay?.let {
                             FilledIconButton(
                                 it,
-                                Modifier.size(56.dp),
+                                Modifier.size(48.dp),
                                 shape = CircleShape,
                                 colors =
                                     IconButtonDefaults.filledIconButtonColors(
@@ -57,7 +57,7 @@ internal fun CollectionHeader(
                         onShuffle?.let {
                             FilledIconButton(
                                 it,
-                                Modifier.size(56.dp),
+                                Modifier.size(48.dp),
                                 shape = CircleShape,
                                 colors =
                                     IconButtonDefaults.filledIconButtonColors(
@@ -73,6 +73,6 @@ internal fun CollectionHeader(
                 }
             }
         }
-        Column(Modifier.fillMaxWidth().padding(top = 8.dp), content = supportingContent)
+        Column(Modifier.fillMaxWidth(), content = supportingContent)
     }
 }

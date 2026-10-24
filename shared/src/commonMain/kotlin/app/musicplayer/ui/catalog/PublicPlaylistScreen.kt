@@ -59,7 +59,7 @@ fun PublicPlaylistScreen(
     Box(Modifier.fillMaxSize()) {
         ArtworkAmbientBackground(colors, Modifier.matchParentSize())
         Column(Modifier.fillMaxSize()) {
-            ScreenHeader("", onBack)
+            CompactHeader("", onBack)
             LazyColumn(
                 Modifier.weight(1f),
                 state = listState,
