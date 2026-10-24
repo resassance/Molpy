@@ -8,14 +8,24 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.*
 import androidx.compose.ui.unit.sp
+import app.musicplayer.appearance.AppTheme
+
+val LocalAppTheme = staticCompositionLocalOf { AppTheme.DARK }
 
 val LocalArtworkColors = staticCompositionLocalOf { ArtworkPalette.fromPixels(intArrayOf()) }
 
 @Composable
-fun MolpyTheme(colors: ArtworkColors, content: @Composable () -> Unit) {
+fun MolpyTheme(colors: ArtworkColors, content: @Composable () -> Unit) =
+    MolpyTheme(AppTheme.DARK, colors, content)
+
+@Composable
+fun MolpyTheme(theme: AppTheme, colors: ArtworkColors, content: @Composable () -> Unit) {
     val scheme =
-        remember(colors) {
-            darkColorScheme(
+        remember(theme, colors) {
+            val light = theme == AppTheme.LIGHT
+            val base = if (light) lightColorScheme() else darkColorScheme()
+            val raised = if (light) Color.Black else Color.White
+            base.copy(
                 primary = Color(colors.accent),
                 onPrimary = Color(colors.onAccent),
                 secondary = Color(colors.accent),
@@ -25,21 +35,33 @@ fun MolpyTheme(colors: ArtworkColors, content: @Composable () -> Unit) {
                 surface = Color(colors.surface),
                 surfaceTint = Color(colors.accent),
                 surfaceDim = Color(colors.background),
-                surfaceBright = lerp(Color(colors.surface), Color.White, 0.08f),
+                surfaceBright = lerp(Color(colors.surface), raised, 0.08f),
                 surfaceContainerLowest = Color(colors.background),
                 surfaceContainerLow = lerp(Color(colors.background), Color(colors.surface), 0.65f),
                 surfaceContainer = Color(colors.surface),
-                surfaceContainerHigh = lerp(Color(colors.surface), Color.White, 0.035f),
-                surfaceContainerHighest = lerp(Color(colors.surface), Color.White, 0.065f),
-                surfaceVariant = lerp(Color(colors.surface), Color.White, 0.035f),
+                surfaceContainerHigh = lerp(Color(colors.surface), raised, 0.035f),
+                surfaceContainerHighest = lerp(Color(colors.surface), raised, 0.065f),
+                surfaceVariant = lerp(Color(colors.surface), raised, 0.035f),
                 primaryContainer = lerp(Color(colors.surface), Color(colors.accent), 0.2f),
                 onPrimaryContainer = Color(colors.onSurface),
                 secondaryContainer = lerp(Color(colors.surface), Color(colors.accent), 0.2f),
                 onSecondaryContainer = Color(colors.onSurface),
                 onSurface = Color(colors.onSurface),
                 onSurfaceVariant = Color(colors.onSurface).copy(alpha = 0.74f),
-                outline = Color(colors.accent).copy(alpha = 0.35f),
-                outlineVariant = Color(colors.accent).copy(alpha = 0.18f),
+                tertiary = Color(colors.accent),
+                onTertiary = Color(colors.onAccent),
+                tertiaryContainer = lerp(Color(colors.surface), Color(colors.accent), 0.2f),
+                onTertiaryContainer = Color(colors.onSurface),
+                inverseSurface = Color(colors.onSurface),
+                inverseOnSurface = Color(colors.surface),
+                inversePrimary = Color(colors.onAccent),
+                error = if (light) Color(0xffa32222) else Color(0xffffb4ab),
+                onError = if (light) Color.White else Color(0xff690005),
+                errorContainer = if (light) Color(0xffffdad6) else Color(0xff93000a),
+                onErrorContainer = if (light) Color(0xff410002) else Color(0xffffdad6),
+                scrim = Color.Black,
+                outline = lerp(Color(colors.surface), Color(colors.onSurface), 0.55f),
+                outlineVariant = lerp(Color(colors.surface), Color(colors.onSurface), 0.22f),
             )
         }
     val largeText = LocalDensity.current.fontScale > 1.2f
@@ -70,7 +92,7 @@ fun MolpyTheme(colors: ArtworkColors, content: @Composable () -> Unit) {
                 bodySmall = TextStyle(fontFamily = FontFamily.SansSerif, fontSize = 12.sp),
             )
         }
-    CompositionLocalProvider(LocalArtworkColors provides colors) {
+    CompositionLocalProvider(LocalAppTheme provides theme, LocalArtworkColors provides colors) {
         MaterialTheme(colorScheme = scheme, typography = type, content = content)
     }
 }
