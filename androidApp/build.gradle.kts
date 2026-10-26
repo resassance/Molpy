@@ -10,8 +10,8 @@ android {
         applicationId = "app.musicplayer.android"
         minSdk = 23
         targetSdk = 37
-        versionCode = 14
-        versionName = "0.1.0-alpha.14"
+        versionCode = 15
+        versionName = "0.1.0-alpha.15"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }

@@ -1,6 +1,7 @@
 package app.musicplayer.ui.search
 
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
 import androidx.compose.foundation.rememberScrollState
@@ -14,7 +15,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import app.musicplayer.artwork.ArtworkLoader
 import app.musicplayer.catalog.*
 import app.musicplayer.model.*
@@ -71,14 +71,18 @@ fun SearchScreen(
     }
     Column(Modifier.fillMaxSize()) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 16.dp)) {
-            Text("Поиск", style = MaterialTheme.typography.headlineLarge)
-            Spacer(Modifier.height(18.dp))
-            OutlinedTextField(
+            TextField(
                 query,
                 { query = it },
                 Modifier.fillMaxWidth(),
                 singleLine = true,
                 shape = RoundedCornerShape(10.dp),
+                colors = TextFieldDefaults.colors(
+                    focusedContainerColor = MaterialTheme.colorScheme.surface,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                    focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+                    unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+                ),
                 placeholder = { Text("Название или исполнитель") },
                 leadingIcon = { Icon(AppIcons.Search, null) },
                 trailingIcon = {
@@ -129,8 +133,9 @@ fun SearchScreen(
             }
             val page = state.page
             page?.topResult?.let { top ->
-                item(key = "search-top-heading") { SearchHeading("Главный результат") }
+                item(key = "search-top-heading") { SearchHeading("Лучший результат") }
                 item(key = top.key) {
+                    Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface, RoundedCornerShape(12.dp)).padding(horizontal = 12.dp)) {
                     SearchResultRow(
                         top,
                         artwork,
@@ -150,6 +155,7 @@ fun SearchScreen(
                             onPublicPlaylist(it)
                         },
                     )
+                    }
                 }
             }
             val shown = mutableSetOf<String>()
@@ -178,7 +184,31 @@ fun SearchScreen(
                                 }
                         }
                     }
-                    items(unique, key = { it.key }) { item ->
+                    val shelf = state.filter == SearchFilter.ALL &&
+                        (section.filter == SearchFilter.ALBUMS || section.filter == SearchFilter.PLAYLISTS)
+                    if (shelf) {
+                        item(key = "shelf:${section.filter}:${unique.first().key}") {
+                            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                unique.forEach { result ->
+                                    when (result) {
+                                        is SearchItem.AlbumItem -> CollectionTile(
+                                            result.card.album.name,
+                                            result.card.artists.joinToString(", ") { it.name },
+                                            { saveScroll(); onAlbum(result.card.album) },
+                                            Modifier.width(136.dp),
+                                        ) { modifier -> TrackArtwork(result.card.artwork, artwork, modifier) }
+                                        is SearchItem.PlaylistItem -> CollectionTile(
+                                            result.card.ref.title,
+                                            result.card.owner,
+                                            { saveScroll(); onPublicPlaylist(result.card.ref) },
+                                            Modifier.width(136.dp),
+                                        ) { modifier -> TrackArtwork(result.card.artwork ?: Artwork(ArtworkKind.PLACEHOLDER, null, null), artwork, modifier) }
+                                        else -> Unit
+                                    }
+                                }
+                            }
+                        }
+                    } else items(unique, key = { it.key }) { item ->
                         SearchResultRow(
                             item,
                             artwork,
@@ -226,10 +256,8 @@ fun SearchScreen(
 @Composable
 private fun SearchHeading(text: String) {
     Text(
-        text.uppercase(),
+        text,
         Modifier.padding(top = 8.dp, bottom = 12.dp),
-        style = MaterialTheme.typography.bodySmall,
-        letterSpacing = 2.sp,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        style = MaterialTheme.typography.titleLarge,
     )
 }

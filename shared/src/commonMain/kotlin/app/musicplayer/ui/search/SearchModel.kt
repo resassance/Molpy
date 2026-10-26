@@ -140,7 +140,7 @@ class SearchModel(
         update { it.copy(loadingMore = true, moreError = null) }
         moreRequest = scope.launch {
             try {
-                val result = search.more(cursor)
+                val result = search.more(cursor, current.query, current.filter, current.page.tracks())
                 ensureActive()
                 if (selected != generation) return@launch
                 when (result) {

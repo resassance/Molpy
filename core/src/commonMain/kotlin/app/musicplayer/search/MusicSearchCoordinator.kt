@@ -81,6 +81,23 @@ class MusicSearchCoordinator(
             is AppResult.Failure -> result
         }
 
+    suspend fun more(cursor: CatalogCursor, query: String, filter: SearchFilter, current: List<Track>): AppResult<SearchPage> =
+        when (val result = more(cursor)) {
+            is AppResult.Failure -> result
+            is AppResult.Success -> {
+                if (filter != SearchFilter.TRACKS) result
+                else {
+                    val page = result.value
+                    val accepted = tracks.filterContinuation(query, current, page.tracks()).map { it.id }.toSet()
+                    fun keep(item: SearchItem) = item !is SearchItem.TrackItem || item.track.id in accepted
+                    AppResult.Success(page.copy(
+                        topResult = page.topResult?.takeIf(::keep),
+                        sections = page.sections.map { it.copy(items = it.items.filter(::keep)) },
+                    ))
+                }
+            }
+        }
+
     private fun displayPage(page: SearchPage): SearchPage =
         page.withTracks(page.tracks().map(tracks::displayTrack))
 }

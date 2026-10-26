@@ -21,6 +21,17 @@ class AppThemePaletteTest {
         )
 
     @Test
+    fun darkBackgroundAndSurfaceStayNeutralAcrossArtwork() {
+        for (cover in covers) {
+            val colors = AppThemePalette.colors(AppTheme.DARK, ArtworkPalette.fromPixels(IntArray(32) { cover }))
+            for (color in listOf(colors.background, colors.surface, AppThemePalette.ambientTop(AppTheme.DARK, colors))) {
+                val channels = listOf(channel(color, 16), channel(color, 8), channel(color, 0))
+                assertTrue(channels.max() <= 30 && channels.max() - channels.min() <= 3, "Dark surfaces should stay neutral and near black")
+            }
+        }
+    }
+
+    @Test
     fun themePalettesRemainReadableOverActualAmbient() {
         for (theme in AppTheme.entries) for (cover in covers) {
             val colors =

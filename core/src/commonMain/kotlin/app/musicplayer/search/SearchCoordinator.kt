@@ -179,6 +179,15 @@ class SearchCoordinator(
         return queryTokens.isNotEmpty() && queryTokens.all { it in trackTokens }
     }
 
+    internal fun filterContinuation(query: String, initial: List<Track>, next: List<Track>): List<Track> {
+        val trimmed = query.trim()
+        val strict = SearchIntent(trimmed, normalizer.versionMarkers(trimmed))
+        val intent =
+            if (initial.any { suitable(it, strict) }) strict
+            else SearchIntent(trimmed, normalizer.queryVersionMarkers(trimmed))
+        return next.filter { suitable(it, intent) }
+    }
+
     internal fun displayTrack(track: Track): Track {
         if (track.provenance.tentative) return parseTentative(track)
         if (track.artwork.kind != ArtworkKind.VIDEO) return track

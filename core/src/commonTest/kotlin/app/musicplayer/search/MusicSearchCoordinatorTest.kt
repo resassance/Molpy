@@ -25,6 +25,26 @@ class MusicSearchCoordinatorTest {
     }
 
     @Test
+    fun trackContinuationUsesSameVersionAndQueryFilterAsFirstPage() = runTest {
+        val studio = track("studio")
+        val live = track("live", title = "Numb (Live)", version = "live")
+        val unrelated = track("other", title = "Somewhere Else")
+        fun trackPage(vararg tracks: Track) =
+            SearchPage(null, listOf(SearchSection(SearchFilter.TRACKS, tracks.map {
+                SearchItem.TrackItem(it, it.candidates.single().source)
+            })), CatalogCursor("next"))
+        val raw = object : MusicSearchPort {
+            override suspend fun search(query: String, filter: SearchFilter) = AppResult.Success(trackPage(studio))
+            override suspend fun more(cursor: CatalogCursor) = AppResult.Success(trackPage(studio, live, unrelated))
+        }
+        val coordinator = MusicSearchCoordinator(raw, SearchCoordinator(FakeCatalog()))
+        val first = coordinator.search("Linkin Park Numb", SearchFilter.TRACKS).valueOrNull()!!
+        val more = coordinator.more(first.next!!, "Linkin Park Numb", SearchFilter.TRACKS, first.tracks()).valueOrNull()!!
+        assertEquals(listOf("studio"), more.tracks().map { it.id.value })
+        assertNotNull(more.next)
+    }
+
+    @Test
     fun allSearchDoesNotFanOutOrBrowse() = runTest {
         val catalog = FakeCatalog()
         val raw = Raw(AppResult.Success(page(artist)))

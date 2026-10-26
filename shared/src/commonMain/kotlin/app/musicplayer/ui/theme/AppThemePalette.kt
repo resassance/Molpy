@@ -6,7 +6,7 @@ import kotlin.math.roundToInt
 object AppThemePalette {
     fun colors(theme: AppTheme, sampled: ArtworkColors): ArtworkColors =
         when (theme) {
-            AppTheme.DARK -> sampled
+            AppTheme.DARK -> sampled.copy(background = 0xff080808.toInt(), surface = 0xff191919.toInt())
             AppTheme.CLASSIC ->
                 ArtworkColors(
                     background = 0xff211812.toInt(),
@@ -28,7 +28,8 @@ object AppThemePalette {
         }
 
     fun ambientTop(theme: AppTheme, colors: ArtworkColors): Int =
-        blend(colors.background, colors.accent, if (theme == AppTheme.LIGHT) 0.035 else 0.07)
+        if (theme == AppTheme.DARK) colors.background
+        else blend(colors.background, colors.accent, if (theme == AppTheme.LIGHT) 0.035 else 0.07)
 
     private fun blend(first: Int, second: Int, amount: Double): Int =
         0xff000000.toInt() or

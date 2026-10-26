@@ -43,20 +43,13 @@ fun SearchResultRow(
     onPublicPlaylist: (PublicPlaylistRef) -> Unit,
 ) {
     if (item is SearchItem.TrackItem) {
-        Column {
-            Text(
-                "Трек",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            TrackRow(
-                item.track,
-                artwork,
-                { onPlay(item.key) },
-                { onMenu(item.track) },
-                selected = item.track.id == current,
-            )
-        }
+        TrackRow(
+            item.track,
+            artwork,
+            { onPlay(item.key) },
+            { onMenu(item.track) },
+            selected = item.track.id == current,
+        )
         return
     }
     val title: String
