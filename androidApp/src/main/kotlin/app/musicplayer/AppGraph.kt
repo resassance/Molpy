@@ -81,6 +81,7 @@ class AppGraph(private val context: Context) {
             network,
             onAssetsChanged = { offlineResources.signal() },
             audioMetadataRecorder = audioMetadataRecorder,
+            diagnostics = diagnostics::record,
         )
 
     @get:UnstableApi

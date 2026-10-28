@@ -5,6 +5,7 @@ import android.os.Looper
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.*
 import androidx.media3.datasource.okhttp.OkHttpDataSource
+import app.musicplayer.diagnostics.DiagnosticEvent
 import app.musicplayer.model.*
 import app.musicplayer.network.forMediaTransfers
 import java.io.IOException
@@ -47,6 +48,7 @@ internal val FreshDownloadOnly = DownloadResponseInspector { response ->
 internal class DownloadDataSource private constructor(private val factory: Factory) : DataSource {
     private var stableUri: Uri? = null
     private var upstream: DataSource? = null
+    private var trace: DownloadTrace? = null
     // close() deliberately does not clear rejection: CacheWriter retries bounded opens unbounded.
     @Volatile private var rejection: AppError? = null
     private val listeners = mutableListOf<TransferListener>()
@@ -60,6 +62,8 @@ internal class DownloadDataSource private constructor(private val factory: Facto
             val asset =
                 runBlocking { factory.repository.findAsset(id) }
                     ?: reject(ErrorCode.INCOMPLETE_MEDIA)
+            trace = DownloadTrace("download.transfer", asset.source.id, factory.diagnostics)
+            trace?.mark("open")
             if (dataSpec.key != asset.storageKey) reject(ErrorCode.RESOURCE_CHANGED)
             val attempt = factory.recovery?.attempt(asset)
             attempt?.rejection?.let {
@@ -72,11 +76,13 @@ internal class DownloadDataSource private constructor(private val factory: Facto
                     dataSpec.position != 0L
             )
                 reject(ErrorCode.RESOURCE_CHANGED)
+            trace?.mark("resolve")
             val lease =
                 when (val resolved = runBlocking { factory.resolve(asset) }) {
                     is AppResult.Success -> resolved.value
                     is AppResult.Failure -> throw DownloadFailure(resolved.error)
                 }
+            trace?.mark("lease")
             if (
                 lease.transport != TransportKind.PROGRESSIVE ||
                     !isProgressiveAudio(lease.representation.mimeType)
@@ -110,7 +116,10 @@ internal class DownloadDataSource private constructor(private val factory: Facto
             val total =
                 lease.representation.expectedBytes
                     ?: asset.representation.expectedBytes
-                    ?: probeLength(calls, lease)
+                    ?: run {
+                        trace?.mark("probe")
+                        probeLength(calls, lease).also { trace?.mark("probe_end") }
+                    }
             val remaining = total?.let { it - dataSpec.position }
             if (remaining != null && remaining <= 0) reject(ErrorCode.INCOMPLETE_MEDIA)
             val requestLength =
@@ -123,6 +132,7 @@ internal class DownloadDataSource private constructor(private val factory: Facto
             val mediaCalls = calls.forMediaTransfers()
             val inspectedCalls = Call.Factory { request ->
                 ResponseInspectingCall(mediaCalls.newCall(request)) { response ->
+                    trace?.mark("response", status = response.code)
                     val observed =
                         DownloadResponse(
                             asset,
@@ -149,6 +159,7 @@ internal class DownloadDataSource private constructor(private val factory: Facto
             // Transfer listeners see only stable requests. No runtime DataSpec is forwarded to
             // them.
             listeners.forEach { it.onTransferInitializing(this, dataSpec, true) }
+            trace?.mark("connect")
             val length =
                 source.open(
                     dataSpec
@@ -163,6 +174,7 @@ internal class DownloadDataSource private constructor(private val factory: Facto
                         )
                         .build()
                 )
+            trace?.mark("connected")
             listeners.forEach { it.onTransferStart(this, dataSpec, true) }
             openedSpec = dataSpec
             return length
@@ -170,9 +182,11 @@ internal class DownloadDataSource private constructor(private val factory: Facto
             close()
             throw cancelled
         } catch (failure: DownloadFailure) {
+            trace?.mark("failed", failure.error.code)
             close()
             throw failure
         } catch (failure: Exception) {
+            trace?.mark("failed", downloadError(failure, "download.open").code)
             close()
             throw DownloadFailure(downloadError(failure, "download.open"))
         }
@@ -194,6 +208,7 @@ internal class DownloadDataSource private constructor(private val factory: Facto
         request.header("Range", "bytes=0-0").header("Accept-Encoding", "identity")
         return try {
             calls.newCall(request.build()).execute().use { response ->
+                trace?.mark("probe_response", status = response.code)
                 if (
                     response.header("Content-Encoding")?.let { !it.equals("identity", true) } ==
                         true
@@ -207,6 +222,7 @@ internal class DownloadDataSource private constructor(private val factory: Facto
                     )
             }
         } catch (_: IOException) {
+            trace?.mark("probe_failed", ErrorCode.NETWORK)
             null
         }
     }
@@ -214,6 +230,7 @@ internal class DownloadDataSource private constructor(private val factory: Facto
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int =
         try {
             val count = checkNotNull(upstream).read(buffer, offset, length)
+            trace?.bytes(count)
             if (count > 0)
                 openedSpec?.let { spec ->
                     listeners.forEach { it.onBytesTransferred(this, spec, true, count) }
@@ -222,6 +239,7 @@ internal class DownloadDataSource private constructor(private val factory: Facto
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Exception) {
+            trace?.mark("failed", downloadError(failure, "download.read").code)
             throw DownloadFailure(downloadError(failure, "download.read"))
         }
 
@@ -234,6 +252,7 @@ internal class DownloadDataSource private constructor(private val factory: Facto
     }
 
     override fun close() {
+        trace?.close()
         try {
             upstream?.close()
         } catch (_: IOException) {
@@ -257,6 +276,7 @@ internal class DownloadDataSource private constructor(private val factory: Facto
         internal val callFactoryFor: (Long) -> Call.Factory,
         internal val inspector: DownloadResponseInspector = FreshDownloadOnly,
         internal val recovery: DownloadRecovery? = null,
+        internal val diagnostics: (DiagnosticEvent) -> Unit = {},
     ) : DataSource.Factory {
         override fun createDataSource(): DataSource = DownloadDataSource(this)
     }

@@ -10,6 +10,7 @@ import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.cache.NoOpCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.exoplayer.offline.*
+import app.musicplayer.diagnostics.DiagnosticEvent
 import app.musicplayer.model.*
 import app.musicplayer.network.*
 import app.musicplayer.playback.*
@@ -18,7 +19,6 @@ import java.util.concurrent.Executors
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import okhttp3.Call
 
@@ -32,10 +32,12 @@ internal class DownloadStore(
     internal val currentNetwork: () -> NetworkContext,
     callFactoryFor: (Long) -> Call.Factory,
     private val onAssetsChanged: () -> Unit = {},
+    internal val diagnostics: (DiagnosticEvent) -> Unit = {},
 ) {
     internal val context = context.applicationContext
     internal val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    internal val mutex = Mutex()
+    internal val commands = DownloadCommandGate()
+    internal val mutex = commands.mutex
     private val executor = Executors.newSingleThreadExecutor()
     val database = StandaloneDatabaseProvider(this.context)
     val cache =
@@ -69,6 +71,7 @@ internal class DownloadStore(
                     { asset -> resolveAssetLease(asset) },
                     callFactoryFor,
                     recovery = recovery,
+                    diagnostics = diagnostics,
                 ),
                 executor,
             )
@@ -341,6 +344,7 @@ internal class DownloadStore(
         retry: Boolean = false,
         restartCount: Int = 1,
     ) {
+        commands.invalidate(DownloadPreparationKey(asset.trackId, asset.candidateId))
         leaseCache.invalidate(asset.id)
         networkPending -= asset.id
         repository.saveMapping(asset.copy(state = DownloadState.FAILED))
@@ -470,6 +474,8 @@ internal class DownloadStore(
             }
             // mutex excludes all owner adds/removals until verification AND durable publication
             // finish.
+            val trace = DownloadTrace("download.verify", asset.source.id, diagnostics)
+            trace.mark("start")
             val verified =
                 DownloadVerifier(cache) { requested ->
                         val current = manager.downloadIndex.getDownload(id.value)
@@ -479,6 +485,7 @@ internal class DownloadStore(
                             recovery.current(asset, token)
                     }
                     .verify(asset)
+            trace.mark("finished", verified.errorOrNull()?.code)
             when (verified) {
                 is AppResult.Success -> {
                     state = DownloadState.AVAILABLE
@@ -609,6 +616,7 @@ internal class DownloadRuntime(
     private val network: AndroidNetworkController,
     onAssetsChanged: () -> Unit = {},
     private val audioMetadataRecorder: AudioMetadataRecorder? = null,
+    private val diagnostics: (DiagnosticEvent) -> Unit = {},
 ) {
     private var generation = SupervisorJob()
     private var session: ExtractionSession? = null
@@ -635,6 +643,8 @@ internal class DownloadRuntime(
                     null
                 else (session ?: newSession().also { session = it }) to generation
             } ?: return AppResult.Failure(AppError(ErrorCode.NETWORK, "download.resolve", true))
+        val trace = DownloadTrace("download.prepare", candidate.source.id, diagnostics)
+        trace.mark("resolve")
         val task =
             CoroutineScope(active.second + Dispatchers.IO).async {
                 active.first.resolver.resolve(
@@ -645,9 +655,11 @@ internal class DownloadRuntime(
             }
         try {
             val result = task.await()
+            trace.mark("resolved", result.errorOrNull()?.code)
             if (result is AppResult.Success) audioMetadataRecorder?.record(candidate, result.value)
             return result
         } finally {
+            trace.close()
             task.cancel()
         }
     }
@@ -660,6 +672,7 @@ internal class DownloadRuntime(
             { network.context.value },
             network.transport::callFactoryFor,
             onAssetsChanged,
+            diagnostics = diagnostics,
         )
     val port: DownloadPort = Media3DownloadPort(store)
     private val listener =

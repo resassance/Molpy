@@ -116,4 +116,26 @@ class DiagnosticsTest {
         )
         assertFalse(diagnostics.exportRedacted().contains("sentinel"))
     }
+
+    @Test
+    fun transferCountersAndHttpStatusesAreValidatedAtExport() {
+        val diagnostics = RedactedDiagnostics()
+        diagnostics.record(event().copy(bytesTransferred = 819200, httpStatus = 206))
+        diagnostics.record(event().copy(bytesTransferred = -1, httpStatus = 999))
+        val lines = diagnostics.exportRedacted().trim().lines()
+        assertTrue(lines[0].contains("\"bytesTransferred\":819200"))
+        assertTrue(lines[0].contains("\"httpStatus\":206"))
+        assertTrue(lines[1].contains("\"bytesTransferred\":null"))
+        assertTrue(lines[1].contains("\"httpStatus\":null"))
+    }
+
+    @Test
+    fun sharedDiagnosticsKeepNewestWholeRecordsWithinBinderBudget() {
+        val diagnostics = RedactedDiagnostics()
+        repeat(3000) { diagnostics.record(event("event.$it")) }
+        val text = diagnostics.exportForSharing()
+        assertTrue(text.length <= 64 * 1024)
+        assertTrue(text.trim().lines().all { it.startsWith("{") && it.endsWith("}") })
+        assertTrue(text.contains("event.2999"))
+    }
 }

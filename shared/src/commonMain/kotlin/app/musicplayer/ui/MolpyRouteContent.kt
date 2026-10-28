@@ -32,6 +32,7 @@ internal fun MolpyRouteContent(
     onDelete: (PlaylistId) -> Unit,
     onManageStorage: () -> Unit,
     formatDate: (Long) -> String,
+    onShareDiagnostics: (() -> Unit)? = null,
 ) {
     val collection by models.library.state.collectAsState()
     val downloads by models.downloads.state.collectAsState()
@@ -209,6 +210,7 @@ internal fun MolpyRouteContent(
                 models.settings,
                 back,
                 playback = models.playbackSettings,
+                onShareDiagnostics = onShareDiagnostics,
                 onAppearance = models.appearance?.let { { navigation.push(AppRoute.Appearance) } },
             ) { password ->
                 scope.launch { models.settings.apply(password) }

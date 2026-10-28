@@ -119,6 +119,7 @@ fun NetworkSettingsScreen(
     onBack: () -> Unit,
     playback: PlaybackSettingsModel? = null,
     onAppearance: (() -> Unit)? = null,
+    onShareDiagnostics: (() -> Unit)? = null,
     onApply: (CharArray?) -> Unit,
 ) {
     val state by model.state.collectAsState()
@@ -139,6 +140,13 @@ fun NetworkSettingsScreen(
                 }
             }
             playback?.let { item { PlaybackSettingsSection(it) } }
+            onShareDiagnostics?.let { share ->
+                item {
+                    TextButton(share, Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                        Text("Поделиться диагностикой", Modifier.fillMaxWidth())
+                    }
+                }
+            }
             item {
                 NetworkSettingsFields(
                     state.draft,

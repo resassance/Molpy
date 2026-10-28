@@ -28,6 +28,11 @@ class RedactedDiagnostics {
             for (event in events) append(render(redact(event))).append('\n')
         }
 
+    fun exportForSharing(): String {
+        val text = exportRedacted()
+        return if (text.length <= 64 * 1024) text else text.takeLast(64 * 1024).substringAfter('\n')
+    }
+
     private fun redact(event: DiagnosticEvent) =
         event.copy(
             operationId = field(event.operationId),
@@ -39,6 +44,8 @@ class RedactedDiagnostics {
             filter = event.filter?.takeIf { it in FILTERS },
             itemCount = event.itemCount?.takeIf { it >= 0 },
             pageCount = event.pageCount?.takeIf { it >= 0 },
+            bytesTransferred = event.bytesTransferred?.takeIf { it >= 0 },
+            httpStatus = event.httpStatus?.takeIf { it in 100..599 },
         )
 
     // Refuse the entire field, rather than trying to preserve pieces of an untrusted message.
@@ -61,7 +68,9 @@ class RedactedDiagnostics {
         append(",\"elapsedMs\":").append(event.elapsedMs)
         append(",\"filter\":").append(quoted(event.filter))
         append(",\"itemCount\":").append(event.itemCount)
-        append(",\"pageCount\":").append(event.pageCount).append('}')
+        append(",\"pageCount\":").append(event.pageCount)
+        append(",\"bytesTransferred\":").append(event.bytesTransferred)
+        append(",\"httpStatus\":").append(event.httpStatus).append('}')
     }
 
     // All non-null values have passed the ASCII identifier allowlist, so JSON escaping is

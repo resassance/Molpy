@@ -39,6 +39,7 @@ fun MolpyApp(
     navigation: AppNavigation,
     onManageStorage: () -> Unit,
     formatDate: (Long) -> String,
+    onShareDiagnostics: (() -> Unit)? = null,
     backHandler: @Composable (Boolean, () -> Unit) -> Unit,
 ) {
     val appearance =
@@ -218,6 +219,7 @@ fun MolpyApp(
                                     { navigation.open(AppOverlay.ConfirmDeletePlaylist(it)) },
                                     onManageStorage,
                                     formatDate,
+                                    onShareDiagnostics,
                                 )
                             }
                         }

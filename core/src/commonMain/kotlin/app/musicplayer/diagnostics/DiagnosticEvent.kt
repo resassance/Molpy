@@ -16,4 +16,6 @@ data class DiagnosticEvent(
     val filter: String? = null,
     val itemCount: Int? = null,
     val pageCount: Int? = null,
+    val bytesTransferred: Long? = null,
+    val httpStatus: Int? = null,
 )

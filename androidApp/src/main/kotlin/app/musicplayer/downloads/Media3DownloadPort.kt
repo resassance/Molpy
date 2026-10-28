@@ -15,62 +15,67 @@ internal class Media3DownloadPort(private val store: DownloadStore) : DownloadPo
     override val failures = store.failures
 
     override suspend fun enqueue(track: Track, candidate: PlaybackCandidate): AppResult<AssetId> =
-        command {
+        attempt {
             if (track.candidates.singleOrNull { it.id == candidate.id } != candidate)
-                return@command failure(ErrorCode.INVALID_CONFIG)
+                return@attempt failure(ErrorCode.INVALID_CONFIG)
             val network = store.currentNetwork()
-            if (!network.ready || !network.online) return@command failure(ErrorCode.NETWORK, true)
-            val lease =
-                when (val result = store.resolveCandidate(candidate, network)) {
-                    is AppResult.Success -> result.value
-                    is AppResult.Failure -> return@command result
+            if (!network.ready || !network.online) return@attempt failure(ErrorCode.NETWORK, true)
+            store.commands.prepare(
+                DownloadPreparationKey(track.id, candidate.id),
+                { store.resolveCandidate(candidate, network) },
+            ) publish@{ lease ->
+                val current = store.currentNetwork()
+                if (!current.ready || !current.online)
+                    return@publish failure(ErrorCode.NETWORK, true)
+                DownloadCommandPolicy.admit(lease, candidate, current.generation)?.let {
+                    return@publish AppResult.Failure(it)
                 }
-            DownloadCommandPolicy.admit(lease, candidate, store.currentNetwork().generation)?.let {
-                return@command AppResult.Failure(it)
+                val key = DownloadPolicy().keyFor(track.id, candidate.id, lease.representation.id)
+                val previous = store.repository.listAssets().singleOrNull { it.storageKey == key }
+                if (
+                    previous != null &&
+                        representationCompatibility(
+                            previous.source,
+                            previous.representation,
+                            candidate.source,
+                            lease.representation,
+                        ) != RepresentationCompatibility.COMPATIBLE
+                )
+                    return@publish failure(ErrorCode.RESOURCE_CHANGED)
+                val asset =
+                    previous
+                        ?: OfflineAsset(
+                            AssetId(UUID.randomUUID().toString()),
+                            track.id,
+                            track,
+                            candidate.id,
+                            candidate.source,
+                            lease.representation,
+                            key,
+                            0,
+                            DownloadState.QUEUED,
+                        )
+                if (asset.id in store.removing)
+                    return@publish failure(ErrorCode.INVALID_CONFIG, true)
+                if (previous?.state == DownloadState.AVAILABLE)
+                    return@publish AppResult.Success(asset.id)
+                if (previous?.state == DownloadState.FAILED) {
+                    store.removeLocked(asset, delete = false, retry = true, restartCount = 0)
+                    return@publish AppResult.Success(asset.id)
+                }
+                store.repository.saveMapping(asset.copy(state = DownloadState.QUEUED))
+                store.rememberLease(asset, lease)
+                start(asset)
+                store.refresh()
+                AppResult.Success(asset.id)
             }
-            val key = DownloadPolicy().keyFor(track.id, candidate.id, lease.representation.id)
-            val previous = store.repository.listAssets().singleOrNull { it.storageKey == key }
-            if (
-                previous != null &&
-                    representationCompatibility(
-                        previous.source,
-                        previous.representation,
-                        candidate.source,
-                        lease.representation,
-                    ) != RepresentationCompatibility.COMPATIBLE
-            )
-                return@command failure(ErrorCode.RESOURCE_CHANGED)
-            val asset =
-                previous
-                    ?: OfflineAsset(
-                        AssetId(UUID.randomUUID().toString()),
-                        track.id,
-                        track,
-                        candidate.id,
-                        candidate.source,
-                        lease.representation,
-                        key,
-                        0,
-                        DownloadState.QUEUED,
-                    )
-            if (asset.id in store.removing) return@command failure(ErrorCode.INVALID_CONFIG, true)
-            if (previous?.state == DownloadState.AVAILABLE)
-                return@command AppResult.Success(asset.id)
-            if (previous?.state == DownloadState.FAILED) {
-                store.removeLocked(asset, delete = false, retry = true, restartCount = 0)
-                return@command AppResult.Success(asset.id)
-            }
-            store.repository.saveMapping(asset.copy(state = DownloadState.QUEUED))
-            store.rememberLease(asset, lease)
-            start(asset)
-            store.refresh()
-            AppResult.Success(asset.id)
         }
 
     override suspend fun pause(id: AssetId): AppResult<Unit> =
         command(id) {
             val asset =
                 store.repository.findAsset(id) ?: return@command failure(ErrorCode.INCOMPLETE_MEDIA)
+            store.commands.invalidate(DownloadPreparationKey(asset.trackId, asset.candidateId))
             store.networkPending -= id
             if (asset.state == DownloadState.AVAILABLE) return@command AppResult.Success(Unit)
             withContext(Dispatchers.Main) { store.manager.setStopReason(id.value, USER_PAUSED) }
@@ -83,6 +88,7 @@ internal class Media3DownloadPort(private val store: DownloadStore) : DownloadPo
         command(id) {
             val asset =
                 store.repository.findAsset(id) ?: return@command failure(ErrorCode.INCOMPLETE_MEDIA)
+            store.commands.invalidate(DownloadPreparationKey(asset.trackId, asset.candidateId))
             if (id in store.removing) return@command failure(ErrorCode.INVALID_CONFIG, true)
             val indexed = store.manager.downloadIndex.getDownload(id.value)
             if (indexed?.state == Download.STATE_COMPLETED && asset.state != DownloadState.FAILED)
@@ -107,6 +113,7 @@ internal class Media3DownloadPort(private val store: DownloadStore) : DownloadPo
         }
 
     override suspend fun removeAll(): AppResult<Unit> = command {
+        store.commands.invalidateAll()
         store.repository.listAssets().forEach { removeLocked(it.id) }
         AppResult.Success(Unit)
     }
@@ -153,11 +160,16 @@ internal class Media3DownloadPort(private val store: DownloadStore) : DownloadPo
     private suspend fun <T> command(
         id: AssetId? = null,
         action: suspend () -> AppResult<T>,
+    ): AppResult<T> = attempt(id) { store.mutex.withLock { action() } }
+
+    private suspend fun <T> attempt(
+        id: AssetId? = null,
+        action: suspend () -> AppResult<T>,
     ): AppResult<T> =
         withContext(Dispatchers.IO) {
             try {
                 store.startup.await()
-                store.mutex.withLock { action() }
+                action()
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {

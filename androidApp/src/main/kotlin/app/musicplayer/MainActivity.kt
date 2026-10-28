@@ -85,6 +85,15 @@ class MainActivity : ComponentActivity() {
                 model,
                 app.graph.artwork,
                 navigation,
+                onShareDiagnostics = {
+                    val share =
+                        Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_SUBJECT, "Диагностика Molpy")
+                            putExtra(Intent.EXTRA_TEXT, app.graph.diagnostics.exportForSharing())
+                        }
+                    startActivity(Intent.createChooser(share, "Поделиться диагностикой"))
+                },
                 onManageStorage = {
                     startActivity(Intent(Settings.ACTION_INTERNAL_STORAGE_SETTINGS))
                 },
