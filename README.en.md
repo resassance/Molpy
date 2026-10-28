@@ -126,6 +126,7 @@ It includes track search, playback, seeking and a queue. Use a system VPN where 
 | [`core`](core) | Models, track identity, provider contracts, search and matching, playback coordination, queue, and download policies |
 | [`shared`](shared) | Catalog, resolver, and lyrics adapters; HTTP, Room storage, artwork, shared state, and Compose UI |
 | [`androidApp`](androidApp) | Android entry point, Media3 engine, media session, background downloads, and file storage |
+| [`desktopApp`](desktopApp) | Windows/Linux window, mpv adapter and shared search and queue |
 
 Recording identity and provenance are separate from the playback identifier. A signed stream URL is a temporary value held in process memory, not a permanent track ID or a persisted link.
 
