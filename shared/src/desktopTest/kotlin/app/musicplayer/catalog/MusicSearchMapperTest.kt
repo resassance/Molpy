@@ -3,6 +3,7 @@ package app.musicplayer.catalog
 import app.musicplayer.model.*
 import kotlin.test.*
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.*
 
 class MusicSearchMapperTest {
     private fun fixture(name: String) =
@@ -83,5 +84,50 @@ class MusicSearchMapperTest {
         )
         assertEquals(ErrorCode.PROVIDER_CHANGED, page.page.primaryFailure!!.code)
         assertTrue(page.page.items().any { it is SearchItem.PlaylistItem })
+    }
+
+    @Test
+    fun adjacentTrackShelvesShareOneHeadingWithoutReorderingOtherTypes() = runTest {
+        val root = Json.parseToJsonElement(fixture("summary")).jsonObject
+        val shelves = catalogSections(root)
+        val song = shelves.first {
+            it["musicShelfRenderer"]
+                ?.jsonObject
+                ?.get("contents")
+                ?.toString()
+                ?.contains("song-one") == true
+        }
+        val album = shelves.first {
+            it["musicShelfRenderer"]
+                ?.jsonObject
+                ?.get("contents")
+                ?.toString()
+                ?.contains("album-one") == true
+        }
+        val second = Json.parseToJsonElement(song.toString().replace("song-one", "song-two"))
+        val third = Json.parseToJsonElement(song.toString().replace("song-one", "song-three"))
+        val body = buildJsonObject {
+            put(
+                "contents",
+                buildJsonObject {
+                    put(
+                        "sectionListRenderer",
+                        buildJsonObject {
+                            put("contents", JsonArray(listOf(song, second, album, third)))
+                        },
+                    )
+                },
+            )
+        }
+            .toString()
+        val page = assertNotNull(mapper.map(body, SearchFilter.ALL).valueOrNull()).page
+        assertEquals(
+            listOf(SearchFilter.TRACKS, SearchFilter.ALBUMS, SearchFilter.TRACKS),
+            page.sections.map { it.filter },
+        )
+        assertEquals(
+            listOf("song-one", "song-two", "album-one", "song-three"),
+            page.items().map { it.source.id },
+        )
     }
 }

@@ -46,4 +46,21 @@ class MusicArtistCreditsTest {
         val body = fixture().replace("\"text\": \"Linkin Park\"", "\"text\": \"Песня\"")
         assertTrue(map(body).artists.isEmpty())
     }
+
+    @Test
+    fun unlinkedConjunctionBetweenArtistsIsNotACredit() = runTest {
+        val body =
+            fixture()
+                .replace(
+                    "\"text\": \"Linkin Park\"",
+                    """"text": "pyrokinesis"},{"text": " и "},{"text": "МУККА", "navigationEndpoint":{"browseEndpoint":{"browseId":"mukka","browseEndpointContextSupportedConfigs":{"browseEndpointContextMusicConfig":{"pageType":"MUSIC_PAGE_TYPE_ARTIST"}}}}""",
+                )
+        assertEquals(listOf("pyrokinesis", "МУККА"), map(body).artists.map { it.name })
+    }
+
+    @Test
+    fun conjunctionInsideArtistNameIsPreserved() = runTest {
+        val body = fixture().replace("Linkin Park", "Король и Шут")
+        assertEquals(listOf("Король и Шут"), map(body).artists.map { it.name })
+    }
 }

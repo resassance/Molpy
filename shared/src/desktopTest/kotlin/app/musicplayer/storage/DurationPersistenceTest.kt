@@ -49,4 +49,31 @@ class DurationPersistenceTest {
             library.close()
         }
     }
+
+    @Test
+    fun repeatedCatalogResultWithoutDurationKeepsKnownDurationsAfterReopen() = runBlocking {
+        val library = TestLibrary()
+        try {
+            library.open()
+            val known = fixture("known-duration")
+            library.repository.upsert(known)
+            val incoming =
+                known.copy(
+                    title = "Updated title",
+                    durationMs = null,
+                    candidates = known.candidates.map { it.copy(durationMs = null) },
+                )
+            library.repository.upsert(incoming)
+            library.reopen()
+            val saved = assertNotNull(library.repository.getTrack(known.id))
+            assertEquals(incoming.title, saved.title)
+            assertEquals(known.durationMs, saved.durationMs)
+            assertEquals(
+                known.candidates.map { it.durationMs },
+                saved.candidates.map { it.durationMs },
+            )
+        } finally {
+            library.close()
+        }
+    }
 }

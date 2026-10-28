@@ -67,12 +67,14 @@ internal class SearchMapper(
                         ?.takeIf { accepts(it, filter) && seen.add(it.key) }
                         ?.let(items::add)
                 }
-                if (items.isNotEmpty())
-                    output +=
-                        SearchSection(
-                            items.map { it.filter }.distinct().singleOrNull() ?: SearchFilter.ALL,
-                            items,
-                        )
+                if (items.isNotEmpty()) {
+                    val filter =
+                        items.map { it.filter }.distinct().singleOrNull() ?: SearchFilter.ALL
+                    val previous = output.lastOrNull()
+                    if (previous?.filter == filter) {
+                        output[output.lastIndex] = previous.copy(items = previous.items + items)
+                    } else output += SearchSection(filter, items)
+                }
                 if (next == null) next = catalogContinuation(shelf)
             }
             if (!recognized || (damaged && top == null && output.isEmpty())) schemaFailure()

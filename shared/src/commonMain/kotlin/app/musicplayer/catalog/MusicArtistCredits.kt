@@ -46,11 +46,13 @@ internal fun musicArtistCredits(raw: JsonObject, context: BrowseTrackContext): L
                             SourceRef(
                                 "youtube",
                                 "artist",
-                                endpoint.requiredObject("browseEndpoint").requiredString("browseId"),
+                                endpoint
+                                    .requiredObject("browseEndpoint")
+                                    .requiredString("browseId"),
                             ),
                         )
                 }
-                name.trim() in creditSeparators -> flush()
+                name.trim().lowercase() in creditSeparators -> flush()
                 plainAllowed && inFirst && endpoint == null -> pending.append(name)
             }
         }
@@ -60,6 +62,6 @@ internal fun musicArtistCredits(raw: JsonObject, context: BrowseTrackContext): L
 }
 
 private val creditSections = setOf("•", "·")
-private val creditSeparators = setOf(",", "&", "、")
+private val creditSeparators = setOf(",", "&", "、", "и", "and")
 private val resultLabels =
     setOf("song", "track", "video", "single", "песня", "трек", "видео", "сингл")

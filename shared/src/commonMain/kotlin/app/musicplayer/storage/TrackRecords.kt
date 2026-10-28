@@ -22,14 +22,34 @@ internal class TrackRecords(database: MusicDatabase) {
         // library.
         require(mappedIds.size <= 1) { "Track joins conflicting durable identities" }
         val id = mappedIds.singleOrNull()?.let(::TrackId) ?: track.id
-        dao.putTrack(RecordMapper.track(track, id, atMs))
+        val previous = load(id)
+        val saved =
+            track.copy(
+                durationMs =
+                    track.durationMs?.takeIf { it > 0 } ?: previous?.durationMs?.takeIf { it > 0 },
+                candidates =
+                    track.candidates.map { candidate ->
+                        val known =
+                            previous
+                                ?.candidates
+                                ?.singleOrNull {
+                                    it.id == candidate.id && it.source == candidate.source
+                                }
+                                ?.durationMs
+                                ?.takeIf { it > 0 }
+                        candidate.copy(
+                            durationMs = candidate.durationMs?.takeIf { it > 0 } ?: known
+                        )
+                    },
+            )
+        dao.putTrack(RecordMapper.track(saved, id, atMs))
         for (source in track.externalIds) {
             dao.insertIdentity(
                 ExternalIdentityRecord(source.provider, source.kind, source.id, id.value)
             )
         }
         dao.deleteCandidates(id.value)
-        dao.insertCandidates(RecordMapper.candidates(track, id))
+        dao.insertCandidates(RecordMapper.candidates(saved, id))
         artists.registerRaw(track.copy(id = id))
         return id
     }

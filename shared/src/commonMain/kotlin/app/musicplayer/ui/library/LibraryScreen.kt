@@ -225,6 +225,7 @@ fun LibraryScreen(
                             null,
                             { onArtist(artist) },
                             Modifier.width(92.dp),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                         ) {
                             ArtistPhoto(artist.ref.name, artist.ref.source, artwork, it)
                         }

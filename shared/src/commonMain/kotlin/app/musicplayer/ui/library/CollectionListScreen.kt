@@ -148,7 +148,12 @@ fun CollectionListScreen(
                             }
                         LibrarySection.ARTISTS ->
                             items(data.artists, key = { it.key }) { artist ->
-                                CollectionTile(artist.ref.name, null, { onArtist(artist) }) {
+                                CollectionTile(
+                                    artist.ref.name,
+                                    null,
+                                    { onArtist(artist) },
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                ) {
                                     ArtistPhoto(artist.ref.name, artist.ref.source, artwork, it)
                                 }
                             }
