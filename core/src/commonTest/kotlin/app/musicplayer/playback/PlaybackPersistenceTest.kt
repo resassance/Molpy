@@ -390,9 +390,39 @@ class PlaybackPersistenceTest {
         assertEquals(ErrorCode.NETWORK, h.persistence.snapshot.value.error?.code)
     }
 
+    @Test
+    fun measuredDurationIsSavedForSelectedSourceWithoutRepeatedProgressWrites() = runTest {
+        val h = Harness(backgroundScope) { testScheduler.currentTime }
+        h.repository.storedTrack =
+            track.copy(
+                durationMs = null,
+                candidates = track.candidates.map { it.copy(durationMs = null) },
+            )
+        h.persistence.initialize()
+        h.queue.play()
+        runCurrent()
+        h.engine.snapshot.value =
+            h.engine.snapshot.value.copy(
+                status = PlayerStatus.PLAYING,
+                candidateId = track.candidates.first().id,
+                durationMs = 188_000,
+            )
+        runCurrent()
+        assertEquals(188_000L, h.repository.storedTrack.durationMs)
+        assertEquals(188_000L, h.repository.storedTrack.candidates.first().durationMs)
+        val writes = h.repository.durationWrites
+        repeat(3) {
+            h.engine.snapshot.value = h.engine.snapshot.value.copy(positionMs = it * 1000L)
+            runCurrent()
+        }
+        assertEquals(writes, h.repository.durationWrites)
+    }
+
     private inner class Repository : LibraryRepository {
         val saves = mutableListOf<QueueSnapshot>()
         val starts = mutableListOf<TrackId>()
+        var storedTrack = track
+        var durationWrites = 0
         var beforeUpsert: suspend () -> Unit = {}
         var beforeSave: suspend () -> Unit = {}
         var saveAttempts = 0
@@ -420,10 +450,20 @@ class PlaybackPersistenceTest {
             prunes++
         }
 
-        override suspend fun getTrack(id: TrackId) = track
+        override suspend fun getTrack(id: TrackId) = storedTrack
+
+        override suspend fun fillMissingDuration(
+            id: TrackId,
+            source: SourceRef,
+            durationMs: Long,
+        ): Track? {
+            durationWrites++
+            return super<LibraryRepository>.fillMissingDuration(id, source, durationMs)
+        }
 
         override suspend fun upsert(track: Track) {
             beforeUpsert()
+            storedTrack = track
         }
 
         override suspend fun getOrCreate(source: SourceRef) = track.id

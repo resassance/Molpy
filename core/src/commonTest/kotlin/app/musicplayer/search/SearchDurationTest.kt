@@ -45,7 +45,7 @@ class SearchDurationTest {
     }
 
     @Test
-    fun optionalDurationTimeoutKeepsResultsAndUsesOneBudget() = runTest {
+    fun durationTimeoutKeepsResultsWithItsOwnBudget() = runTest {
         val song = track(duration = null)
         val catalog =
             object : CatalogPort {
@@ -60,13 +60,13 @@ class SearchDurationTest {
                 override suspend fun durations(
                     sources: List<SourceRef>
                 ): AppResult<Map<SourceRef, Long>> {
-                    delay(10_000)
+                    delay(30_000)
                     error("cancelled")
                 }
             }
         val result = assertNotNull(SearchCoordinator(catalog).search("Numb").valueOrNull())
         assertEquals(listOf(song), result.tracks)
-        assertEquals(3_000L, testScheduler.currentTime)
+        assertEquals(15_000L, testScheduler.currentTime)
     }
 
     @Test
@@ -105,5 +105,34 @@ class SearchDurationTest {
             assertEquals(video.id, result.id)
             assertEquals(video.candidates.single().source, result.candidates.single().source)
         }
+    }
+
+    @Test
+    fun durationLookupSurvivesSlowNetworkBeyondMatchingBudget() = runTest {
+        val song = track(duration = null)
+        val snapshots = mutableListOf<SearchResults>()
+        val catalog =
+            object : CatalogPort {
+                override suspend fun searchSongs(query: String) = AppResult.Success(listOf(song))
+
+                override suspend fun searchVideos(query: String): AppResult<List<Track>> =
+                    error("No fallback")
+
+                override suspend fun findMusicMatches(track: Track): AppResult<List<Track>> =
+                    error("No matching")
+
+                override suspend fun durations(
+                    sources: List<SourceRef>
+                ): AppResult<Map<SourceRef, Long>> {
+                    delay(5_000)
+                    return AppResult.Success(mapOf(song.candidates.single().source to 188_000L))
+                }
+            }
+        val pending = async { SearchCoordinator(catalog).search("Numb", snapshots::add) }
+        runCurrent()
+        assertEquals(song.id, snapshots.first().tracks.single().id)
+        assertFalse(pending.isCompleted)
+        assertEquals(188_000L, pending.await().valueOrNull()!!.tracks.single().durationMs)
+        assertEquals(5_000L, testScheduler.currentTime)
     }
 }

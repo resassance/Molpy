@@ -45,8 +45,14 @@ internal class DesktopGraph(ownerScope: CoroutineScope, dataPath: Path = dataDir
     val search =
         SearchModel(
                 MusicSearchCoordinator(
-                    InnerTubeMusicSearch(catalogSession, 1, library),
-                    SearchCoordinator(InnerTubeCatalog(catalogSession, library)),
+                    StoredMusicSearch(InnerTubeMusicSearch(catalogSession, 1, library), library),
+                    SearchCoordinator(
+                        CachedCatalog(
+                            InnerTubeCatalog(catalogSession, library),
+                            library,
+                            System::currentTimeMillis,
+                        )
+                    ),
                 ),
                 player,
                 scope,

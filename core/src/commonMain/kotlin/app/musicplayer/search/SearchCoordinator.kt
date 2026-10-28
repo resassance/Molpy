@@ -106,26 +106,28 @@ class SearchCoordinator(
                     provenance = metadata.provenance,
                 )
         }
-        withTimeoutOrNull(3_000) {
+        coroutineScope {
             val durationJob = async {
-                val missing =
-                    initial
-                        .filter { it.durationMs == null || it.durationMs <= 0 }
-                        .mapNotNull { it.candidates.firstOrNull()?.source }
-                        .distinct()
-                if (missing.isNotEmpty()) {
-                    val durations = catalog.durations(missing).valueOrNull().orEmpty()
-                    updates.withLock {
-                        ensureActive()
-                        for (index in tracks.indices) {
-                            var track = tracks[index]
-                            durations.forEach { (source, duration) ->
-                                track = track.withMissingDuration(source, duration)
+                withTimeoutOrNull(15_000) {
+                    val missing =
+                        initial
+                            .filter { it.durationMs == null || it.durationMs <= 0 }
+                            .mapNotNull { it.candidates.firstOrNull()?.source }
+                            .distinct()
+                    if (missing.isNotEmpty()) {
+                        val durations = catalog.durations(missing).valueOrNull().orEmpty()
+                        updates.withLock {
+                            ensureActive()
+                            for (index in tracks.indices) {
+                                var track = tracks[index]
+                                durations.forEach { (source, duration) ->
+                                    track = track.withMissingDuration(source, duration)
+                                }
+                                tracks[index] = track
+                                applyMetadata(index)
                             }
-                            tracks[index] = track
-                            applyMetadata(index)
+                            onResults(SearchResults(tracks.toList(), primaryFailure, fromFallback))
                         }
-                        onResults(SearchResults(tracks.toList(), primaryFailure, fromFallback))
                     }
                 }
             }
@@ -134,22 +136,28 @@ class SearchCoordinator(
                 else
                     initial.mapIndexed { index, partial ->
                         async {
-                            requests.withPermit {
-                                val matches = catalog.findMusicMatches(partial)
-                                updates.withLock {
-                                    ensureActive()
-                                    if (
-                                        primaryFailure == null &&
-                                            matches.errorOrNull()?.code == ErrorCode.DATABASE
-                                    )
-                                        primaryFailure = matches.errorOrNull()
-                                    if (matches is AppResult.Success) {
-                                        matchesByIndex[index] = matches.value
-                                        applyMetadata(index)
+                            withTimeoutOrNull(3_000) {
+                                requests.withPermit {
+                                    val matches = catalog.findMusicMatches(partial)
+                                    updates.withLock {
+                                        ensureActive()
+                                        if (
+                                            primaryFailure == null &&
+                                                matches.errorOrNull()?.code == ErrorCode.DATABASE
+                                        )
+                                            primaryFailure = matches.errorOrNull()
+                                        if (matches is AppResult.Success) {
+                                            matchesByIndex[index] = matches.value
+                                            applyMetadata(index)
+                                        }
+                                        onResults(
+                                            SearchResults(
+                                                tracks.toList(),
+                                                primaryFailure,
+                                                fromFallback,
+                                            )
+                                        )
                                     }
-                                    onResults(
-                                        SearchResults(tracks.toList(), primaryFailure, fromFallback)
-                                    )
                                 }
                             }
                         }
@@ -179,7 +187,11 @@ class SearchCoordinator(
         return queryTokens.isNotEmpty() && queryTokens.all { it in trackTokens }
     }
 
-    internal fun filterContinuation(query: String, initial: List<Track>, next: List<Track>): List<Track> {
+    internal fun filterContinuation(
+        query: String,
+        initial: List<Track>,
+        next: List<Track>,
+    ): List<Track> {
         val trimmed = query.trim()
         val strict = SearchIntent(trimmed, normalizer.versionMarkers(trimmed))
         val intent =

@@ -140,10 +140,13 @@ class AppGraph(private val context: Context) {
     private val search = SearchCoordinator(catalog)
     private val musicSearch =
         MusicSearchCoordinator(
-            RoutedMusicSearch(
-                { activeMusicSearch },
-                { network.context.value },
-                diagnostics::record,
+            StoredMusicSearch(
+                RoutedMusicSearch(
+                    { activeMusicSearch },
+                    { network.context.value },
+                    diagnostics::record,
+                ),
+                library,
             ),
             search,
         )

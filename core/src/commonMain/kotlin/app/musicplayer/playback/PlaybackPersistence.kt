@@ -46,7 +46,27 @@ class PlaybackPersistence(
         collection = scope.launch { persistence.start(queue.state) }
         history = scope.launch {
             var startedAttempt: Long? = null
+            var savedDuration: Triple<TrackId, SourceRef, Long>? = null
             coordinator.snapshot.collect { actual ->
+                val track = actual.track
+                val duration = actual.durationMs?.takeIf { it > 0 }
+                val source = track?.candidates?.firstOrNull { it.id == actual.candidateId }?.source
+                if (
+                    track != null &&
+                        source != null &&
+                        duration != null &&
+                        actual.status in
+                            setOf(PlayerStatus.PLAYING, PlayerStatus.PAUSED, PlayerStatus.ENDED)
+                ) {
+                    val measurement = Triple(track.id, source, duration)
+                    if (
+                        measurement != savedDuration &&
+                            storage("duration") {
+                                repository.fillMissingDuration(track.id, source, duration)
+                            }
+                    )
+                        savedDuration = measurement
+                }
                 val attempt = coordinator.userAttempt.value
                 if (
                     actual.status == PlayerStatus.PLAYING &&

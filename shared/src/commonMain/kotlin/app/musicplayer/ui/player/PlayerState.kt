@@ -25,5 +25,15 @@ data class PlayerState(
                 }
 
     val currentTrack: Track?
-        get() = snapshot.track ?: snapshot.current?.trackId?.let(queueTracks::get)
+        get() {
+            val active = snapshot.track ?: return snapshot.current?.trackId?.let(queueTracks::get)
+            val saved = queueTracks[active.id] ?: return active
+            return saved.candidates.fold(active) { track, candidate ->
+                candidate.durationMs
+                    ?.takeIf { it > 0 }
+                    ?.let {
+                        track.withMissingDuration(candidate.source, it)
+                    } ?: track
+            }
+        }
 }

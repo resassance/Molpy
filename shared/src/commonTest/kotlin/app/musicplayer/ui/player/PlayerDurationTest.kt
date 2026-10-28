@@ -53,4 +53,20 @@ class PlayerDurationTest {
                 .effectiveDurationMs
         )
     }
+
+    @Test
+    fun stalePlaybackTrackUsesPersistedDurationForSameRecording() {
+        val unknown =
+            track.copy(
+                durationMs = null,
+                candidates = track.candidates.map { it.copy(durationMs = null) },
+            )
+        val state =
+            PlayerState(
+                snapshot =
+                    PlaybackSnapshot(track = unknown, candidateId = track.candidates.single().id),
+                queueTracks = mapOf(track.id to track),
+            )
+        assertEquals(189_000L, state.effectiveDurationMs)
+    }
 }

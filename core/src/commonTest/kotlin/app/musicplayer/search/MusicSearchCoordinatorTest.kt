@@ -30,16 +30,32 @@ class MusicSearchCoordinatorTest {
         val live = track("live", title = "Numb (Live)", version = "live")
         val unrelated = track("other", title = "Somewhere Else")
         fun trackPage(vararg tracks: Track) =
-            SearchPage(null, listOf(SearchSection(SearchFilter.TRACKS, tracks.map {
-                SearchItem.TrackItem(it, it.candidates.single().source)
-            })), CatalogCursor("next"))
-        val raw = object : MusicSearchPort {
-            override suspend fun search(query: String, filter: SearchFilter) = AppResult.Success(trackPage(studio))
-            override suspend fun more(cursor: CatalogCursor) = AppResult.Success(trackPage(studio, live, unrelated))
-        }
+            SearchPage(
+                null,
+                listOf(
+                    SearchSection(
+                        SearchFilter.TRACKS,
+                        tracks.map {
+                            SearchItem.TrackItem(it, it.candidates.single().source)
+                        },
+                    )
+                ),
+                CatalogCursor("next"),
+            )
+        val raw =
+            object : MusicSearchPort {
+                override suspend fun search(query: String, filter: SearchFilter) =
+                    AppResult.Success(trackPage(studio))
+
+                override suspend fun more(cursor: CatalogCursor) =
+                    AppResult.Success(trackPage(studio, live, unrelated))
+            }
         val coordinator = MusicSearchCoordinator(raw, SearchCoordinator(FakeCatalog()))
         val first = coordinator.search("Linkin Park Numb", SearchFilter.TRACKS).valueOrNull()!!
-        val more = coordinator.more(first.next!!, "Linkin Park Numb", SearchFilter.TRACKS, first.tracks()).valueOrNull()!!
+        val more =
+            coordinator
+                .more(first.next!!, "Linkin Park Numb", SearchFilter.TRACKS, first.tracks())
+                .valueOrNull()!!
         assertEquals(listOf("studio"), more.tracks().map { it.id.value })
         assertNotNull(more.next)
     }
@@ -170,5 +186,34 @@ class MusicSearchCoordinatorTest {
                 it.items().map { item -> item.key } == listOf(artist.key, "track:youtube/video/a")
             }
         )
+    }
+
+    @Test
+    fun continuationLoadsMissingDurationsWithoutResolvingAudio() = runTest {
+        val song = track("continued", duration = null)
+        val raw =
+            Raw(
+                AppResult.Success(page(SearchItem.TrackItem(song, song.candidates.single().source)))
+            )
+        val catalog =
+            object : CatalogPort {
+                override suspend fun searchSongs(query: String): AppResult<List<Track>> =
+                    error("No search")
+
+                override suspend fun searchVideos(query: String): AppResult<List<Track>> =
+                    error("No fallback")
+
+                override suspend fun findMusicMatches(track: Track): AppResult<List<Track>> =
+                    error("No matching")
+
+                override suspend fun durations(sources: List<SourceRef>) =
+                    AppResult.Success(mapOf(song.candidates.single().source to 188_000L))
+            }
+        val coordinator = MusicSearchCoordinator(raw, SearchCoordinator(catalog))
+        val result =
+            coordinator
+                .more(CatalogCursor("more"), "Numb", SearchFilter.ALL, emptyList())
+                .valueOrNull()!!
+        assertEquals(188_000L, result.tracks().single().durationMs)
     }
 }

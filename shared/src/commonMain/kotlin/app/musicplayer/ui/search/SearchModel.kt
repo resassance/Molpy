@@ -140,20 +140,29 @@ class SearchModel(
         update { it.copy(loadingMore = true, moreError = null) }
         moreRequest = scope.launch {
             try {
-                val result = search.more(cursor, current.query, current.filter, current.page.tracks())
+                fun publish(page: SearchPage) {
+                    if (selected != generation) return
+                    rememberArtwork(page)
+                    update {
+                        it.copy(
+                            page = append(refresh(it.page, page), page),
+                            loadingMore = false,
+                            moreError = null,
+                        )
+                    }
+                }
+                val result =
+                    search.more(
+                        cursor,
+                        current.query,
+                        current.filter,
+                        current.page.tracks(),
+                        ::publish,
+                    )
                 ensureActive()
                 if (selected != generation) return@launch
                 when (result) {
-                    is AppResult.Success -> {
-                        rememberArtwork(result.value)
-                        update {
-                            it.copy(
-                                page = append(requireNotNull(it.page), result.value),
-                                loadingMore = false,
-                                moreError = null,
-                            )
-                        }
-                    }
+                    is AppResult.Success -> publish(result.value)
                     is AppResult.Failure ->
                         update { it.copy(loadingMore = false, moreError = result.error) }
                 }

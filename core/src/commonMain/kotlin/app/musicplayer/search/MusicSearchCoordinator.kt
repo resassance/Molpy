@@ -81,20 +81,45 @@ class MusicSearchCoordinator(
             is AppResult.Failure -> result
         }
 
-    suspend fun more(cursor: CatalogCursor, query: String, filter: SearchFilter, current: List<Track>): AppResult<SearchPage> =
+    suspend fun more(
+        cursor: CatalogCursor,
+        query: String,
+        filter: SearchFilter,
+        current: List<Track>,
+        onResults: (SearchPage) -> Unit = {},
+    ): AppResult<SearchPage> =
         when (val result = more(cursor)) {
             is AppResult.Failure -> result
             is AppResult.Success -> {
-                if (filter != SearchFilter.TRACKS) result
-                else {
-                    val page = result.value
-                    val accepted = tracks.filterContinuation(query, current, page.tracks()).map { it.id }.toSet()
-                    fun keep(item: SearchItem) = item !is SearchItem.TrackItem || item.track.id in accepted
-                    AppResult.Success(page.copy(
-                        topResult = page.topResult?.takeIf(::keep),
-                        sections = page.sections.map { it.copy(items = it.items.filter(::keep)) },
-                    ))
+                var page = result.value
+                if (filter == SearchFilter.TRACKS) {
+                    val accepted =
+                        tracks
+                            .filterContinuation(query, current, page.tracks())
+                            .map { it.id }
+                            .toSet()
+                    fun keep(item: SearchItem) =
+                        item !is SearchItem.TrackItem || item.track.id in accepted
+                    page =
+                        page.copy(
+                            topResult = page.topResult?.takeIf(::keep),
+                            sections =
+                                page.sections.map { it.copy(items = it.items.filter(::keep)) },
+                        )
                 }
+                onResults(page)
+                if (page.tracks().isEmpty()) AppResult.Success(page)
+                else
+                    when (
+                        val enriched =
+                            tracks.enrich(query, page.tracks(), false) {
+                                onResults(page.withTracks(it.tracks))
+                            }
+                    ) {
+                        is AppResult.Success ->
+                            AppResult.Success(page.withTracks(enriched.value.tracks))
+                        is AppResult.Failure -> AppResult.Success(page)
+                    }
             }
         }
 

@@ -75,8 +75,8 @@ class PlayerModel(
                         snapshot = snapshot,
                         trackMotion = direction,
                         queueTracks =
-                            it.queueTracks +
-                                listOfNotNull(snapshot.track).associateBy { track -> track.id },
+                            listOfNotNull(snapshot.track).associateBy { track -> track.id } +
+                                it.queueTracks,
                         lyrics = if (changed) null else it.lyrics,
                         loadingLyrics = if (changed) false else it.loadingLyrics,
                         lyricsError = if (changed) null else it.lyricsError,
@@ -110,8 +110,8 @@ class PlayerModel(
                 mutable.update { old ->
                     old.copy(
                         queueTracks =
-                            records.associateBy { it.id } +
-                                listOfNotNull(old.snapshot.track).associateBy { it.id },
+                            listOfNotNull(old.snapshot.track).associateBy { it.id } +
+                                records.associateBy { it.id },
                         repositoryError = null,
                     )
                 }
