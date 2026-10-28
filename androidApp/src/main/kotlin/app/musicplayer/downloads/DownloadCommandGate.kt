@@ -2,6 +2,8 @@ package app.musicplayer.downloads
 
 import app.musicplayer.model.*
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -26,15 +28,26 @@ internal class DownloadCommandGate {
         resolve: suspend () -> AppResult<P>,
         commit: suspend (P) -> AppResult<T>,
     ): AppResult<T> {
+        return prepareCurrent(key, { true }, resolve, commit)
+    }
+
+    suspend fun <P, T> prepareCurrent(
+        key: DownloadPreparationKey,
+        isCurrent: () -> Boolean,
+        resolve: suspend () -> AppResult<P>,
+        commit: suspend (P) -> AppResult<T>,
+    ): AppResult<T> {
         val token = Any()
-        mutex.withLock { pending[key] = token }
+        mutex.withLock {
+            currentCoroutineContext().ensureActive()
+            if (!isCurrent()) return obsolete()
+            pending[key] = token
+        }
         try {
             val resolved = resolve()
             return mutex.withLock {
-                if (pending[key] !== token)
-                    AppResult.Failure(
-                        AppError(ErrorCode.RESOURCE_CHANGED, "download.prepare", true)
-                    )
+                currentCoroutineContext().ensureActive()
+                if (pending[key] !== token || !isCurrent()) obsolete()
                 else
                     when (resolved) {
                         is AppResult.Success -> commit(resolved.value)
@@ -47,4 +60,7 @@ internal class DownloadCommandGate {
             }
         }
     }
+
+    private fun obsolete() =
+        AppResult.Failure(AppError(ErrorCode.RESOURCE_CHANGED, "download.prepare", true))
 }

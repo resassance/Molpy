@@ -57,6 +57,14 @@ class DownloadCandidateFlowTest {
             val failure = AppError(ErrorCode.STORAGE_FULL, "download.transfer", true)
             val downloads =
                 object : DownloadPort {
+                    override val preparations =
+                        MutableStateFlow<List<DownloadPreparation>>(emptyList())
+                    override val activity =
+                        MutableStateFlow<Map<AssetId, DownloadActivity>>(emptyMap())
+
+                    override suspend fun cancelPreparation(id: String): AppResult<Unit> =
+                        AppResult.Success(Unit)
+
                     override val states = MutableStateFlow(listOf(asset))
                     override val failures = MutableStateFlow(mapOf(asset.id to failure))
                     var candidate: CandidateId? = null

@@ -49,6 +49,9 @@ internal class DownloadDataSource private constructor(private val factory: Facto
     private var stableUri: Uri? = null
     private var upstream: DataSource? = null
     private var trace: DownloadTrace? = null
+    private var activitySession: Pair<AssetId, String>? = null
+    private var transferred = 0L
+    private var offset = 0L
     // close() deliberately does not clear rejection: CacheWriter retries bounded opens unbounded.
     @Volatile private var rejection: AppError? = null
     private val listeners = mutableListOf<TransferListener>()
@@ -57,6 +60,9 @@ internal class DownloadDataSource private constructor(private val factory: Facto
         check(Looper.myLooper() != Looper.getMainLooper()) { "Download IO cannot run on Main" }
         rejection?.let { throw DownloadFailure(it) }
         stableUri = dataSpec.uri
+        transferred = 0
+        offset = dataSpec.position
+        activitySession = null
         try {
             val id = StableCacheIdentity.assetId(dataSpec.uri.toString())
             val asset =
@@ -120,6 +126,10 @@ internal class DownloadDataSource private constructor(private val factory: Facto
                         trace?.mark("probe")
                         probeLength(calls, lease).also { trace?.mark("probe_end") }
                     }
+            if (attempt != null)
+                factory.activity?.begin(asset.id, attempt.token, dataSpec.position, total)?.let {
+                    activitySession = asset.id to it
+                }
             val remaining = total?.let { it - dataSpec.position }
             if (remaining != null && remaining <= 0) reject(ErrorCode.INCOMPLETE_MEDIA)
             val requestLength =
@@ -231,6 +241,12 @@ internal class DownloadDataSource private constructor(private val factory: Facto
         try {
             val count = checkNotNull(upstream).read(buffer, offset, length)
             trace?.bytes(count)
+            if (count > 0) {
+                transferred += count
+                activitySession?.let { (id, session) ->
+                    factory.activity?.bytes(id, session, offset + transferred)
+                }
+            }
             if (count > 0)
                 openedSpec?.let { spec ->
                     listeners.forEach { it.onBytesTransferred(this, spec, true, count) }
@@ -262,6 +278,7 @@ internal class DownloadDataSource private constructor(private val factory: Facto
         openedSpec?.let { spec -> listeners.forEach { it.onTransferEnd(this, spec, true) } }
         openedSpec = null
         stableUri = null
+        activitySession = null
     }
 
     private fun reject(code: ErrorCode): Nothing {
@@ -277,6 +294,7 @@ internal class DownloadDataSource private constructor(private val factory: Facto
         internal val inspector: DownloadResponseInspector = FreshDownloadOnly,
         internal val recovery: DownloadRecovery? = null,
         internal val diagnostics: (DiagnosticEvent) -> Unit = {},
+        internal val activity: DownloadActivityTracker? = null,
     ) : DataSource.Factory {
         override fun createDataSource(): DataSource = DownloadDataSource(this)
     }

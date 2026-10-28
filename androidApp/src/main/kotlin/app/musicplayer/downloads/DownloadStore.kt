@@ -38,6 +38,14 @@ internal class DownloadStore(
     internal val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     internal val commands = DownloadCommandGate()
     internal val mutex = commands.mutex
+    internal val preparations =
+        DownloadPreparationQueue(
+            commands,
+            CoroutineScope(scope.coroutineContext + Dispatchers.IO),
+        ) {
+            downloadError(it, "download.prepare")
+        }
+    internal val activity = DownloadActivityTracker()
     private val executor = Executors.newSingleThreadExecutor()
     val database = StandaloneDatabaseProvider(this.context)
     val cache =
@@ -72,6 +80,7 @@ internal class DownloadStore(
                     callFactoryFor,
                     recovery = recovery,
                     diagnostics = diagnostics,
+                    activity = activity,
                 ),
                 executor,
             )
@@ -257,6 +266,7 @@ internal class DownloadStore(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
+                activity.forget(id)
                 fail(id, downloadError(failure, "download.project", ErrorCode.DATABASE))
                 mutableStates.update { assets ->
                     assets.map { if (it.id == id) it.copy(state = DownloadState.FAILED) else it }
@@ -277,6 +287,7 @@ internal class DownloadStore(
     ) {
         check(manager.downloadIndex.getDownload(asset.id.value) == null)
         leaseCache.invalidate(asset.id)
+        activity.forget(asset.id)
         recovery.clean(asset)
         recovery.reset(asset)
         pendingAdds -= asset.id
@@ -294,47 +305,61 @@ internal class DownloadStore(
         refresh()
     }
 
-    private suspend fun restartAfterRemoval(asset: OfflineAsset, restartCount: Int) {
-        suspend fun failed(error: AppError) {
-            repository.saveMapping(asset.copy(bytes = 0, state = DownloadState.FAILED))
-            fail(asset.id, error)
-        }
+    private fun restartAfterRemoval(asset: OfflineAsset, restartCount: Int) {
         val candidate = asset.trackSnapshot.candidates.single { it.id == asset.candidateId }
-        val resolved = resolveCandidate(candidate, currentNetwork())
-        if (resolved is AppResult.Failure) {
-            failed(resolved.error)
-            return
-        }
-        val lease = (resolved as AppResult.Success).value
-        DownloadCommandPolicy.admit(lease, candidate, currentNetwork().generation)?.let {
-            failed(it)
-            return
-        }
-        val fresh =
-            asset.copy(
-                representation = lease.representation,
-                storageKey =
-                    DownloadPolicy()
-                        .keyFor(asset.trackId, asset.candidateId, lease.representation.id),
-                bytes = 0,
-                state = DownloadState.QUEUED,
+        preparations.submitLocked(
+            asset.trackSnapshot,
+            candidate,
+            replace = true,
+            resolve = {
+                val network = currentNetwork()
+                if (!network.ready || !network.online)
+                    AppResult.Failure(AppError(ErrorCode.NETWORK, "download.restart", true))
+                else resolveCandidate(candidate, network)
+            },
+        ) publish@{ lease ->
+            suspend fun failed(error: AppError): AppResult<AssetId> {
+                repository.saveMapping(asset.copy(bytes = 0, state = DownloadState.FAILED))
+                fail(asset.id, error)
+                refresh()
+                return AppResult.Failure(error)
+            }
+            val network = currentNetwork()
+            if (!network.ready || !network.online)
+                return@publish failed(AppError(ErrorCode.NETWORK, "download.restart", true))
+            DownloadCommandPolicy.admit(lease, candidate, network.generation)?.let {
+                return@publish failed(it)
+            }
+            val fresh =
+                asset.copy(
+                    representation = lease.representation,
+                    storageKey =
+                        DownloadPolicy()
+                            .keyFor(asset.trackId, asset.candidateId, lease.representation.id),
+                    bytes = 0,
+                    state = DownloadState.QUEUED,
+                )
+            if (
+                repository.listAssets().any {
+                    it.id != asset.id && it.storageKey == fresh.storageKey
+                }
             )
-        if (
-            repository.listAssets().any { it.id != asset.id && it.storageKey == fresh.storageKey }
-        ) {
-            failed(AppError(ErrorCode.RESOURCE_CHANGED, "download.restart.identity", false))
-            return
-        }
-        repository.saveMapping(fresh)
-        recovery.restart(fresh, restartCount)
-        rememberLease(fresh, lease)
-        clearFailure(fresh.id)
-        withContext(Dispatchers.Main.immediate) {
-            if (restartCount == 0) {
-                pendingAdds += fresh.id
-                dispatchServiceCommand(DownloadServiceCommand.ADD, request(fresh))
-                userStarted()
-            } else manager.addDownload(request(fresh))
+                return@publish failed(
+                    AppError(ErrorCode.RESOURCE_CHANGED, "download.restart.identity", false)
+                )
+            repository.saveMapping(fresh)
+            recovery.restart(fresh, restartCount)
+            rememberLease(fresh, lease)
+            clearFailure(fresh.id)
+            withContext(Dispatchers.Main.immediate) {
+                if (restartCount == 0) {
+                    pendingAdds += fresh.id
+                    dispatchServiceCommand(DownloadServiceCommand.ADD, request(fresh))
+                    userStarted()
+                } else manager.addDownload(request(fresh))
+            }
+            refresh()
+            AppResult.Success(fresh.id)
         }
     }
 
@@ -345,6 +370,7 @@ internal class DownloadStore(
         restartCount: Int = 1,
     ) {
         commands.invalidate(DownloadPreparationKey(asset.trackId, asset.candidateId))
+        activity.forget(asset.id)
         leaseCache.invalidate(asset.id)
         networkPending -= asset.id
         repository.saveMapping(asset.copy(state = DownloadState.FAILED))
@@ -457,8 +483,22 @@ internal class DownloadStore(
             return AppResult.Failure(failure)
         }
         var state = DownloadProjection.state(download.state)
+        if (download.state != Download.STATE_COMPLETED)
+            activity.native(
+                id,
+                token,
+                state,
+                download.bytesDownloaded.coerceAtLeast(0),
+                asset.representation.expectedBytes,
+            )
         var failure = error
         if (download.state == Download.STATE_COMPLETED) {
+            activity.verifying(
+                id,
+                token,
+                download.bytesDownloaded.coerceAtLeast(0),
+                asset.representation.expectedBytes,
+            )
             val stamp = ResourceStampMetadata.read(cache, asset.storageKey)
             if (
                 stamp == null ||
@@ -502,6 +542,14 @@ internal class DownloadStore(
         repository.saveMapping(
             asset.copy(bytes = download.bytesDownloaded.coerceAtLeast(0), state = state)
         )
+        if (state in setOf(DownloadState.AVAILABLE, DownloadState.FAILED))
+            activity.native(
+                id,
+                token,
+                state,
+                download.bytesDownloaded.coerceAtLeast(0),
+                asset.representation.expectedBytes,
+            )
         refresh()
         if (state == DownloadState.AVAILABLE) assetsChanged()
         return if (state == DownloadState.FAILED) AppResult.Failure(failures.value.getValue(id))
@@ -528,12 +576,21 @@ internal class DownloadStore(
         }
     }
 
-    internal fun request(asset: OfflineAsset): DownloadRequest =
-        DownloadRequest.Builder(asset.id.value, Uri.parse(StableCacheIdentity.uri(asset.id)))
+    internal fun request(asset: OfflineAsset): DownloadRequest {
+        val token = recovery.attempt(asset).token
+        activity.native(
+            asset.id,
+            token,
+            DownloadState.QUEUED,
+            asset.bytes,
+            asset.representation.expectedBytes,
+        )
+        return DownloadRequest.Builder(asset.id.value, Uri.parse(StableCacheIdentity.uri(asset.id)))
             .setMimeType(asset.representation.mimeType)
             .setCustomCacheKey(asset.storageKey)
-            .setData(recovery.attempt(asset).token.toByteArray(Charsets.UTF_8))
+            .setData(token.toByteArray(Charsets.UTF_8))
             .build()
+    }
 
     /** Pause old generation IO; continuation must retain foreground-service ownership. */
     suspend fun networkInvalidated() =
@@ -543,6 +600,7 @@ internal class DownloadStore(
         }
 
     private fun pauseTransfers() {
+        manager.currentDownloads.forEach { activity.forget(AssetId(it.request.id)) }
         networkPending +=
             manager.currentDownloads
                 .filter {

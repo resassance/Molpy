@@ -29,6 +29,11 @@ internal class MutableCollections : CollectionsRepository {
 }
 
 internal open class PresentationDownloads : DownloadPort {
+    override val preparations = MutableStateFlow<List<DownloadPreparation>>(emptyList())
+    override val activity = MutableStateFlow<Map<AssetId, DownloadActivity>>(emptyMap())
+
+    override suspend fun cancelPreparation(id: String): AppResult<Unit> = AppResult.Success(Unit)
+
     override val states = MutableStateFlow<List<OfflineAsset>>(emptyList())
     override val failures = MutableStateFlow<Map<AssetId, AppError>>(emptyMap())
 

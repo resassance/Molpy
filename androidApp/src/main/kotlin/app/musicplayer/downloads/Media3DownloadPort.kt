@@ -13,16 +13,27 @@ import kotlinx.coroutines.sync.withLock
 internal class Media3DownloadPort(private val store: DownloadStore) : DownloadPort {
     override val states = store.states
     override val failures = store.failures
+    override val preparations = store.preparations.states
+    override val activity = store.activity.states
+
+    override suspend fun cancelPreparation(id: String): AppResult<Unit> {
+        store.preparations.cancel(id)
+        return AppResult.Success(Unit)
+    }
 
     override suspend fun enqueue(track: Track, candidate: PlaybackCandidate): AppResult<AssetId> =
-        attempt {
+        withContext(Dispatchers.IO) {
             if (track.candidates.singleOrNull { it.id == candidate.id } != candidate)
-                return@attempt failure(ErrorCode.INVALID_CONFIG)
-            val network = store.currentNetwork()
-            if (!network.ready || !network.online) return@attempt failure(ErrorCode.NETWORK, true)
-            store.commands.prepare(
-                DownloadPreparationKey(track.id, candidate.id),
-                { store.resolveCandidate(candidate, network) },
+                return@withContext failure(ErrorCode.INVALID_CONFIG)
+            store.preparations.enqueue(
+                track,
+                candidate,
+                {
+                    store.startup.await()
+                    val network = store.currentNetwork()
+                    if (!network.ready || !network.online) failure(ErrorCode.NETWORK, true)
+                    else store.resolveCandidate(candidate, network)
+                },
             ) publish@{ lease ->
                 val current = store.currentNetwork()
                 if (!current.ready || !current.online)
@@ -75,6 +86,9 @@ internal class Media3DownloadPort(private val store: DownloadStore) : DownloadPo
         command(id) {
             val asset =
                 store.repository.findAsset(id) ?: return@command failure(ErrorCode.INCOMPLETE_MEDIA)
+            store.preparations.cancelLocked(
+                DownloadPreparationKey(asset.trackId, asset.candidateId)
+            )
             store.commands.invalidate(DownloadPreparationKey(asset.trackId, asset.candidateId))
             store.networkPending -= id
             if (asset.state == DownloadState.AVAILABLE) return@command AppResult.Success(Unit)
@@ -88,6 +102,9 @@ internal class Media3DownloadPort(private val store: DownloadStore) : DownloadPo
         command(id) {
             val asset =
                 store.repository.findAsset(id) ?: return@command failure(ErrorCode.INCOMPLETE_MEDIA)
+            store.preparations.cancelLocked(
+                DownloadPreparationKey(asset.trackId, asset.candidateId)
+            )
             store.commands.invalidate(DownloadPreparationKey(asset.trackId, asset.candidateId))
             if (id in store.removing) return@command failure(ErrorCode.INVALID_CONFIG, true)
             val indexed = store.manager.downloadIndex.getDownload(id.value)
@@ -113,6 +130,7 @@ internal class Media3DownloadPort(private val store: DownloadStore) : DownloadPo
         }
 
     override suspend fun removeAll(): AppResult<Unit> = command {
+        store.preparations.cancelAllLocked()
         store.commands.invalidateAll()
         store.repository.listAssets().forEach { removeLocked(it.id) }
         AppResult.Success(Unit)
@@ -120,6 +138,7 @@ internal class Media3DownloadPort(private val store: DownloadStore) : DownloadPo
 
     private suspend fun removeLocked(id: AssetId) {
         val asset = store.repository.findAsset(id) ?: return
+        store.preparations.cancelLocked(DownloadPreparationKey(asset.trackId, asset.candidateId))
         store.removeLocked(asset)
     }
 
