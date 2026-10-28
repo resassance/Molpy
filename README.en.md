@@ -11,10 +11,10 @@
   <a href="https://developer.android.com/media/media3"><img alt="Media3 1.11.1" src="https://img.shields.io/badge/Media3-1.11.1-00897B?style=for-the-badge&logo=android&logoColor=white"></a>
 </p>
 
-[![Prerelease](https://img.shields.io/badge/release-v0.1.0--alpha.15-D97706?style=flat-square)](https://github.com/resassance/Molpy/releases/tag/v0.1.0-alpha.15)
+[![Prerelease](https://img.shields.io/badge/release-v0.1.0--alpha.17-D97706?style=flat-square)](https://github.com/resassance/Molpy/releases/tag/v0.1.0-alpha.17)
 [![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0--only-546E7A?style=flat-square)](LICENSE)
 
-**[Download APK](https://github.com/resassance/Molpy/releases/download/v0.1.0-alpha.15/Molpy-v0.1.0-alpha.15-debug.apk)** · [Release page](https://github.com/resassance/Molpy/releases/tag/v0.1.0-alpha.15) · [Report an issue](https://github.com/resassance/Molpy/issues)
+**[Download APK](https://github.com/resassance/Molpy/releases/download/v0.1.0-alpha.17/Molpy-v0.1.0-alpha.17-debug.apk)** · [Release page](https://github.com/resassance/Molpy/releases/tag/v0.1.0-alpha.17) · [Report an issue](https://github.com/resassance/Molpy/issues)
 
 ## Contents
 
@@ -31,7 +31,7 @@
 
 Molpy centers on the musical recording: title, artists, release, artwork, and track version. Provider responses are converted into a shared `Track` model so the interface does not depend on YouTube API structures.
 
-Android comes first. Windows and Linux are planned next, with web considered later. iOS is outside the current scope. Desktop and browser apps have not been released yet.
+Android is the main version. A basic Windows and Linux app is available from source; desktop packages and a web version will follow. iOS is outside the current scope.
 
 No Molpy account or dedicated backend is required. Google sign-in is not implemented. This project is independent of YouTube, Google, and lyrics providers; it does not provide DRM or paid-access bypasses.
 
@@ -66,13 +66,13 @@ After restarting the app, the queue is restored on pause. Press Play to continue
 - **Formats:** downloads use a single progressive audio stream without transcoding; offline HLS and DASH are not supported. Compatibility depends on the recording format and Android codecs.
 - **Background downloads:** Android may pause them due to system restrictions. After force-stopping the app, open it to continue.
 
-Windows and Linux are planned after Android, followed by web. Accounts, cloud sync, and integrations with other music services are outside the immediate scope.
+The desktop app will gradually gain the Android app’s features; web will follow later. Accounts, cloud sync, and integrations with other music services are outside the immediate scope.
 
 ## Install and try
 
 **Requirements:** Android 6.0 / API 23 or later, on a 64-bit `arm64-v8a` device or `x86_64` emulator/device. The APK does not include 32-bit ABIs.
 
-1. Open [release v0.1.0-alpha.15](https://github.com/resassance/Molpy/releases/tag/v0.1.0-alpha.15) and download `Molpy-v0.1.0-alpha.15-debug.apk`.
+1. Open [release v0.1.0-alpha.17](https://github.com/resassance/Molpy/releases/tag/v0.1.0-alpha.17) and download `Molpy-v0.1.0-alpha.17-debug.apk`.
 2. Install the APK, allowing installation from your chosen source in Android settings if prompted.
 3. If YouTube is unavailable on your network, enable a system VPN or configure a proxy in Molpy’s network settings.
 4. Search by artist and title and select a recording from the results.
