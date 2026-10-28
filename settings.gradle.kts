@@ -12,4 +12,4 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "Molpy"
-include(":core", ":shared", ":androidApp")
+include(":core", ":shared", ":androidApp", ":desktopApp")

@@ -103,6 +103,22 @@ On Windows, use the Windows Gradle Wrapper:
 
 Local APK output: `androidApp/build/outputs/apk/debug/androidApp-debug.apk`.
 
+### Desktop
+
+The desktop foundation can be launched from source on Windows and Linux. Audio playback requires [mpv 0.41+](https://mpv.io/installation/) in `PATH`, or an executable path in `MOLPY_MPV`.
+
+```sh
+./gradlew :desktopApp:run
+```
+
+On Windows:
+
+```powershell
+.\gradlew.bat :desktopApp:run
+```
+
+It includes track search, playback, seeking and a queue. Use a system VPN where YouTube is unavailable directly. Desktop downloads and system media controls will follow later.
+
 ## Architecture and stack
 
 | Module | Responsibility |
