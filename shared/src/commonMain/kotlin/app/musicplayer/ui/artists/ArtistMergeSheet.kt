@@ -48,7 +48,7 @@ fun ArtistMergeSheet(
             Text("Время прослушивания: ${formatListeningTime(merge.playedMs)}")
             if (profiles.size > 1) {
                 Text(
-                    "Выберите профиль для итоговой карточки",
+                    "Какой профиль открывать",
                     style = MaterialTheme.typography.titleMedium,
                 )
                 profiles.forEach { profile ->

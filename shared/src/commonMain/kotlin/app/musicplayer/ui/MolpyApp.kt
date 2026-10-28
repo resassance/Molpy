@@ -360,7 +360,8 @@ fun MolpyApp(
                                         models.artistMerge?.preview(
                                             overlay.artistId,
                                             choice.id,
-                                            null,
+                                            ArtistResolver.profile(choice.id, artistDirectory)
+                                                .source,
                                         )
                                         finish(overlay)
                                         navigation.open(AppOverlay.ArtistMerge)
@@ -370,6 +371,9 @@ fun MolpyApp(
                                 excluded = setOf(overlay.artistId),
                                 allowName = false,
                                 title = "Объединить с…",
+                                artwork = artwork,
+                                matchingName =
+                                    artistDirectory.profiles[overlay.artistId]?.name.orEmpty(),
                             )
                         is AppOverlay.ArtistMerges ->
                             ArtistMergesSheet(

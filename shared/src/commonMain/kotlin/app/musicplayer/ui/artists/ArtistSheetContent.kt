@@ -55,6 +55,7 @@ internal fun ArtistOption(
     enabled: Boolean = true,
     artwork: Artwork? = null,
     loader: ArtworkLoader? = null,
+    source: SourceRef? = null,
 ) {
     TextButton(
         onClick,
@@ -67,8 +68,8 @@ internal fun ArtistOption(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            if (artwork != null && loader != null)
-                TrackArtwork(artwork, loader, Modifier.size(40.dp))
+            if (loader != null)
+                ArtistPhoto(name, source, loader, Modifier.size(40.dp), initial = artwork)
             else Icon(AppIcons.Profile, null, Modifier.size(24.dp))
             Column(Modifier.weight(1f)) {
                 Text(

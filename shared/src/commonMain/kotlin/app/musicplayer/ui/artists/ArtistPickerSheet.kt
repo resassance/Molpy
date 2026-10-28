@@ -20,19 +20,11 @@ fun ArtistPickerSheet(
     allowName: Boolean = true,
     title: String = "Выбрать исполнителя",
     artwork: ArtworkLoader? = null,
+    matchingName: String? = null,
 ) {
     val local =
-        remember(directory, query, excluded) {
-            directory.profiles.keys
-                .map { ArtistResolver.root(it, directory) }
-                .distinct()
-                .filter { it !in excluded }
-                .map { ArtistResolver.profile(it, directory) }
-                .filter {
-                    ArtistResolver.normalizedName(it.name)
-                        .contains(ArtistResolver.normalizedName(query))
-                }
-                .sortedBy { ArtistResolver.normalizedName(it.name) }
+        remember(directory, query, excluded, matchingName) {
+            artistPickerCandidates(directory, query, excluded, matchingName)
         }
     ArtistSheetContent(title, onClose) {
         OutlinedTextField(
@@ -60,6 +52,8 @@ fun ArtistPickerSheet(
                     profile.name,
                     if (profile.source == null) "Локальная карточка" else "Связана с профилем",
                     { onSelect(ArtistChoice.Existing(profile.id)) },
+                    loader = artwork,
+                    source = profile.source,
                 )
             }
         }
@@ -75,6 +69,7 @@ fun ArtistPickerSheet(
                     { onSelect(ArtistChoice.Catalog(hit)) },
                     artwork = hit.artwork,
                     loader = artwork,
+                    source = hit.source,
                 )
             }
             if (query.trim().length < 2)
@@ -88,6 +83,37 @@ fun ArtistPickerSheet(
                     "Профили не найдены. Можно сохранить только имя.",
                     style = MaterialTheme.typography.bodySmall,
                 )
-        } else if (local.isEmpty()) Text("Подходящих локальных карточек нет.")
+        } else if (local.isEmpty())
+            Text(
+                if (query.isBlank())
+                    "Других карточек с таким же именем нет. Найдите нужную по имени."
+                else "Подходящих карточек нет."
+            )
     }
+}
+
+internal fun artistPickerCandidates(
+    directory: ArtistDirectory,
+    query: String,
+    excluded: Set<ArtistId>,
+    matchingName: String? = null,
+): List<ArtistProfile> {
+    val excludedRoots =
+        excluded
+            .filter { it in directory.profiles }
+            .map { ArtistResolver.root(it, directory) }
+            .toSet()
+    val search = ArtistResolver.normalizedName(query)
+    val suggested = matchingName?.let(ArtistResolver::normalizedName)
+    return directory.profiles.keys
+        .map { ArtistResolver.root(it, directory) }
+        .distinct()
+        .filter { it !in excludedRoots }
+        .map { ArtistResolver.profile(it, directory) }
+        .filter {
+            val name = ArtistResolver.normalizedName(it.name)
+            if (search.isNotEmpty()) name.contains(search)
+            else suggested == null || name == suggested
+        }
+        .sortedBy { ArtistResolver.normalizedName(it.name) }
 }
