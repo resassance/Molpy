@@ -268,10 +268,11 @@ class AppGraph(private val context: Context) {
                 .apply {
                     if (!network.context.value.ready) networkInvalidated()
                 }
+        val metadata = TrackMetadataLoader(library, remoteCatalog, diagnostics::record)
         return MolpyModels(
-                PlayerModel(player, library, lyrics, ownerScope),
+                PlayerModel(player, library, lyrics, ownerScope, metadata),
                 SearchModel(musicSearch, player, ownerScope, artistArtwork::remember),
-                LibraryModel(collections, player, ownerScope, directory.state),
+                LibraryModel(collections, player, ownerScope, directory.state, metadata),
                 CatalogModel(
                     browse,
                     collections,
@@ -279,8 +280,9 @@ class AppGraph(private val context: Context) {
                     ownerScope,
                     directory.state,
                     artistArtwork::remember,
+                    metadata,
                 ),
-                ProfileModel(listening, player, ownerScope, directory.state),
+                ProfileModel(listening, player, ownerScope, directory.state, metadata),
                 DownloadsModel(downloads, { storageUsage.measure() }, ownerScope),
                 NetworkSettingsModel(network, library, secrets, ownerScope),
                 PaletteModel({ artwork.samplePixels(context, it) }, ownerScope),
@@ -291,7 +293,7 @@ class AppGraph(private val context: Context) {
                     ArtistEditorModel(artists, artistSearch, ownerScope, artistArtwork::remember),
                 artistMerge = ArtistMergeModel(artists, ownerScope),
                 artistRepository = artists,
-                publicPlaylist = PublicPlaylistModel(browse, player, ownerScope),
+                publicPlaylist = PublicPlaylistModel(browse, player, ownerScope, metadata),
                 sampleArtworkPixels = { artwork.samplePixels(context, it) },
                 appearance = AppearanceModel(appearancePreferences, ownerScope),
                 artistArtwork = artistArtwork,

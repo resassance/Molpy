@@ -1,9 +1,11 @@
 package app.musicplayer.ui.player
 
+import app.musicplayer.catalog.TrackMetadataLoader
 import app.musicplayer.library.LibraryRepository
 import app.musicplayer.lyrics.LyricsLoader
 import app.musicplayer.model.*
 import app.musicplayer.queue.*
+import app.musicplayer.ui.TrackMetadataRequests
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 
@@ -12,9 +14,11 @@ class PlayerModel(
     private val library: LibraryRepository,
     private val lyrics: LyricsLoader,
     ownerScope: CoroutineScope,
+    metadata: TrackMetadataLoader? = null,
 ) {
     private val job = SupervisorJob(ownerScope.coroutineContext[Job])
     private val scope = CoroutineScope(ownerScope.coroutineContext + job)
+    private val metadataRequests = TrackMetadataRequests(metadata, scope)
     private val mutable =
         MutableStateFlow(PlayerState(snapshot = player.snapshot.value, queue = player.queue.value))
     val state: StateFlow<PlayerState> = mutable.asStateFlow()
@@ -82,6 +86,7 @@ class PlayerModel(
                         lyricsError = if (changed) null else it.lyricsError,
                     )
                 }
+                if (changed) fillMetadata()
                 if (changed && nextBinding.candidateId != null) loadLyrics()
             }
         }
@@ -110,11 +115,22 @@ class PlayerModel(
                 mutable.update { old ->
                     old.copy(
                         queueTracks =
-                            listOfNotNull(old.snapshot.track).associateBy { it.id } +
-                                records.associateBy { it.id },
+                            (listOfNotNull(old.snapshot.track).associateBy { it.id } +
+                                    records.associateBy { it.id })
+                                .mapValues { (_, track) ->
+                                    old.queueTracks[track.id]?.candidates?.fold(track) {
+                                        current,
+                                        known ->
+                                        known.durationMs
+                                            ?.takeIf { it > 0 }
+                                            ?.let { current.withMissingDuration(known.source, it) }
+                                            ?: current
+                                    } ?: track
+                                },
                         repositoryError = null,
                     )
                 }
+                fillMetadata()
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
@@ -269,9 +285,31 @@ class PlayerModel(
     }
 
     fun networkInvalidated() {
+        metadataRequests.pause()
         ++lyricsGeneration
         lyricsJob?.cancel()
         mutable.update { it.copy(loadingLyrics = false) }
+    }
+
+    fun refreshMetadata() {
+        metadataRequests.resume()
+        fillMetadata()
+    }
+
+    private fun fillMetadata() {
+        val current = state.value
+        val tracks =
+            (listOfNotNull(current.snapshot.track) + current.queueTracks.values)
+                .distinctBy { it.id }
+                .filter {
+                    (it.durationMs ?: 0) <= 0 ||
+                        it.candidates.any { candidate -> (candidate.durationMs ?: 0) <= 0 }
+                }
+        metadataRequests.load(tracks) { updated ->
+            mutable.update {
+                it.copy(queueTracks = it.queueTracks + updated.associateBy { track -> track.id })
+            }
+        }
     }
 
     fun close() {

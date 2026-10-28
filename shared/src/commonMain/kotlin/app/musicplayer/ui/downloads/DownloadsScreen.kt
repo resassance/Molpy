@@ -73,7 +73,7 @@ fun DownloadsScreen(
                     asset,
                     state,
                     artwork,
-                    { onPlay(available.map { it.trackSnapshot }, index) },
+                    { onPlay(available.map(::downloadTrack), index) },
                     {},
                     {},
                     { scope.launch { model.remove(asset.id) } },
@@ -116,7 +116,7 @@ private fun DownloadRow(
     onRemove: () -> Unit,
     onManageStorage: () -> Unit,
 ) {
-    val track = asset.trackSnapshot
+    val track = downloadTrack(asset)
     var menu by remember(asset.id) { mutableStateOf(false) }
     Column(Modifier.padding(vertical = 8.dp)) {
         Row(
@@ -138,7 +138,7 @@ private fun DownloadRow(
                 val label =
                     when (asset.state) {
                         DownloadState.AVAILABLE ->
-                            "${formatTrackDuration(track.durationMs)} · ${formatBytes(state.usage.perAssetBytes[asset.id] ?: asset.bytes)}"
+                            "${formatTrackDuration(downloadDurationMs(asset))} · ${formatBytes(state.usage.perAssetBytes[asset.id] ?: asset.bytes)}"
                         DownloadState.QUEUED -> "В очереди"
                         DownloadState.PAUSED -> "На паузе · ${formatBytes(asset.bytes)}"
                         DownloadState.FAILED -> "Не удалось скачать"

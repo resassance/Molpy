@@ -456,4 +456,62 @@ class PublicPlaylistModelTest {
         assertEquals(2, firstCalls)
         model.close()
     }
+
+    @Test
+    fun durationUpdatePreservesRepeatedAndUnavailablePlaylistOccurrences() = runTest {
+        val unknown = unknownDurationTrack()
+        val rows = listOf(row(0, unknown), row(1, unknown), row(2, null, true))
+        val browse =
+            object : Browse() {
+                override suspend fun playlist(ref: PublicPlaylistRef, refresh: Boolean) =
+                    AppResult.Success(catalog(ref, rows))
+            }
+        val loader = durationMetadata { sources ->
+            AppResult.Success(mapOf(sources.single() to 188_000L))
+        }
+        val player = Player()
+        val model = PublicPlaylistModel(browse, player, backgroundScope, metadata = loader)
+        model.open(ref)
+        runCurrent()
+        val actual = model.state.value.tracks.data!!.items
+        assertEquals(rows.map { it.identity }, actual.map { it.identity })
+        assertEquals(listOf(188_000L, 188_000L, null), actual.map { it.track?.durationMs })
+        assertTrue(actual.last().unavailable)
+        assertTrue(player.requests.isEmpty())
+        model.close()
+    }
+
+    @Test
+    fun hiddenPlaylistDoesNotRestartMetadataAfterReconnection() = runTest {
+        var calls = 0
+        var cancelled = false
+        val loader = durationMetadata {
+            calls++
+            try {
+                awaitCancellation()
+            } finally {
+                cancelled = true
+            }
+        }
+        val browse =
+            object : Browse() {
+                override suspend fun playlist(ref: PublicPlaylistRef, refresh: Boolean) =
+                    AppResult.Success(catalog(ref, listOf(row(0, unknownDurationTrack()))))
+            }
+        val model = PublicPlaylistModel(browse, Player(), backgroundScope, metadata = loader)
+        model.open(ref)
+        runCurrent()
+        assertEquals(1, calls)
+        model.setMetadataVisible(false)
+        runCurrent()
+        assertTrue(cancelled)
+        model.networkInvalidated()
+        model.networkActivated()
+        runCurrent()
+        assertEquals(1, calls)
+        model.open(ref)
+        runCurrent()
+        assertEquals(2, calls)
+        model.close()
+    }
 }

@@ -98,4 +98,40 @@ class DownloadsModelTest {
             )
         )
     }
+
+    @Test
+    fun downloadedLengthUsesStoredRepresentationBeforeAudioIsOpened() {
+        val saved =
+            asset().let { asset ->
+                asset.copy(
+                    trackSnapshot =
+                        asset.trackSnapshot.copy(
+                            durationMs = null,
+                            candidates =
+                                asset.trackSnapshot.candidates.map { it.copy(durationMs = null) },
+                        )
+                )
+            }
+        assertEquals(60_000L, downloadDurationMs(saved))
+        assertEquals(60_000L, downloadTrack(saved).candidates.single().durationMs)
+    }
+
+    @Test
+    fun candidateLengthWinsOverCanonicalLengthWhenRepresentationHasNoDuration() {
+        val saved =
+            asset().let { asset ->
+                asset.copy(
+                    representation = asset.representation.copy(expectedDurationMs = null),
+                    trackSnapshot =
+                        asset.trackSnapshot.copy(
+                            durationMs = 120_000,
+                            candidates =
+                                asset.trackSnapshot.candidates.map {
+                                    it.copy(durationMs = 188_000)
+                                },
+                        ),
+                )
+            }
+        assertEquals(188_000L, downloadDurationMs(saved))
+    }
 }

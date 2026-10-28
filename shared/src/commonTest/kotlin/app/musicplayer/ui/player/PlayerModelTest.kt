@@ -200,4 +200,48 @@ class PlayerModelTest {
         assertTrue(port.snapshot.value.playWhenReady)
         model.close()
     }
+
+    @Test
+    fun selectedAlternativeGetsItsOwnDurationBeforeAudioIsLoaded() = runTest {
+        val base = sampleTrack("selected")
+        val primary = base.candidates.first().copy(durationMs = 120_000)
+        val alternate =
+            primary.copy(
+                id = CandidateId("alternate"),
+                source = primary.source.copy(id = "alternate"),
+                durationMs = null,
+            )
+        val track = base.copy(durationMs = 120_000, candidates = listOf(primary, alternate))
+        val library = EngineeringLibrary()
+        val loader =
+            durationMetadata(library) { sources ->
+                assertEquals(listOf(alternate.source), sources)
+                AppResult.Success(mapOf(alternate.source to 188_000L))
+            }
+        val entry = QueueEntry(QueueEntryId("selected"), track.id)
+        val port =
+            EngineeringPort().apply {
+                snapshot.value =
+                    PlaybackSnapshot(
+                        status = PlayerStatus.PAUSED,
+                        current = entry,
+                        track = track,
+                        candidateId = alternate.id,
+                    )
+                queue.value = QueueSnapshot(entries = listOf(entry), currentEntryId = entry.id)
+            }
+        val model =
+            PlayerModel(
+                port,
+                library,
+                LyricsLoader(emptyList(), LyricsSelector(), SessionLyricsCache()) { 0 },
+                backgroundScope,
+                metadata = loader,
+            )
+        runCurrent()
+        assertEquals(188_000L, model.state.value.effectiveDurationMs)
+        assertNull(port.snapshot.value.durationMs)
+        assertEquals(0, port.plays)
+        model.close()
+    }
 }

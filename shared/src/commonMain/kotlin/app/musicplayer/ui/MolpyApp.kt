@@ -53,6 +53,14 @@ fun MolpyApp(
     val library by models.library.state.collectAsState()
     val downloads by models.downloads.state.collectAsState()
     val nav by navigation.state.collectAsState()
+    val metadataCovered =
+        nav.overlays.any {
+            it == AppOverlay.NowPlaying || it == AppOverlay.Lyrics || it == AppOverlay.Queue
+        }
+    DisposableEffect(models, nav.current, metadataCovered) {
+        models.setMetadataRoute(nav.current.takeUnless { metadataCovered })
+        onDispose { models.setMetadataRoute(null) }
+    }
     val sampled by models.palette.state.collectAsState()
     val colors = AppThemePalette.colors(appearance.theme, sampled)
     val epoch by models.artworkEpoch.collectAsState()

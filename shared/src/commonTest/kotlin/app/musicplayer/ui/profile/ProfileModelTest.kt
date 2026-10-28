@@ -121,4 +121,47 @@ class ProfileModelTest {
         assertFalse(model.commandError.value.toString().contains("private failure"))
         model.close()
     }
+
+    @Test
+    fun oldHistoryGetsDurationsWithoutChangingListeningMetricsOrStarts() = runTest {
+        val missing = unknownDurationTrack()
+        val repo =
+            Repository().apply {
+                changes.value =
+                    AppResult.Success(
+                        ListeningProfile(
+                            totalMs = 9000,
+                            tracks = listOf(TrackListening(missing, 9000, 20)),
+                        )
+                    )
+                response = {
+                    AppResult.Success(
+                        HistoryPage(
+                            listOf(
+                                HistoryItem("one", missing, 10, 4000),
+                                HistoryItem("two", missing, 20, 5000),
+                            ),
+                            null,
+                        )
+                    )
+                }
+            }
+        val loader = durationMetadata { sources ->
+            AppResult.Success(mapOf(sources.single() to 188_000L))
+        }
+        val player = EngineeringPort()
+        val model = ProfileModel(repo, player, backgroundScope, metadata = loader)
+        model.setMetadataVisible(true)
+        runCurrent()
+        assertEquals(
+            listOf(188_000L, 188_000L),
+            model.history.value.data!!.items.map { it.track.durationMs },
+        )
+        assertEquals(listOf("one", "two"), model.history.value.data!!.items.map { it.id })
+        assertEquals(listOf(4000L, 5000L), model.history.value.data!!.items.map { it.playedMs })
+        assertEquals(9000L, model.profile.value.data!!.totalMs)
+        assertEquals(188_000L, model.profile.value.data!!.tracks.single().track.durationMs)
+        assertEquals(0, player.plays)
+        model.close()
+    }
 }

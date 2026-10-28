@@ -5,6 +5,7 @@ import app.musicplayer.catalog.*
 import app.musicplayer.collections.*
 import app.musicplayer.model.*
 import app.musicplayer.queue.QueuePlaybackPort
+import app.musicplayer.ui.TrackMetadataRequests
 import app.musicplayer.ui.artists.withArtistRevision
 import app.musicplayer.ui.components.LoadState
 import kotlinx.coroutines.*
@@ -46,9 +47,11 @@ class CatalogModel(
     ownerScope: CoroutineScope,
     private val artists: StateFlow<LoadState<ArtistDirectory>>? = null,
     private val rememberArtistArtwork: (SourceRef, Artwork) -> Unit = { _, _ -> },
+    metadata: TrackMetadataLoader? = null,
 ) {
     private val job = SupervisorJob(ownerScope.coroutineContext[Job])
     private val scope = CoroutineScope(ownerScope.coroutineContext + job)
+    private val metadataRequests = TrackMetadataRequests(metadata, scope, initiallyVisible = false)
     private val mutable = MutableStateFlow(CatalogScreenState())
     val state: StateFlow<CatalogScreenState> = mutable.asStateFlow()
     private var commandGeneration = 0L
@@ -100,7 +103,10 @@ class CatalogModel(
         }
     }
 
-    fun localArtist(id: ArtistId) = openArtist(id, CatalogSection.ALL)
+    fun localArtist(id: ArtistId) {
+        setMetadataVisible(true)
+        openArtist(id, CatalogSection.ALL)
+    }
 
     private fun openArtist(id: ArtistId, section: CatalogSection, force: Boolean = false) {
         val directory = artists?.value?.data ?: return
@@ -118,10 +124,13 @@ class CatalogModel(
         )
     }
 
-    fun album(ref: AlbumRef, localKey: String? = null) =
+    fun album(ref: AlbumRef, localKey: String? = null) {
+        setMetadataVisible(true)
         open(CatalogScreenState(albumRef = ref, localKey = localKey, title = ref.name))
+    }
 
     fun artist(ref: ArtistRef, localKey: String? = null) {
+        setMetadataVisible(true)
         val directory = artists?.value?.data
         val id =
             if (directory == null) null
@@ -150,8 +159,12 @@ class CatalogModel(
         Key(s.albumRef?.source ?: s.artistRef?.source, s.localKey, s.albumRef != null)
 
     private fun open(target: CatalogScreenState, force: Boolean = false) {
-        if (!force && key(target) == key(state.value) && state.value.title.isNotBlank()) return
+        if (!force && key(target) == key(state.value) && state.value.title.isNotBlank()) {
+            fillMetadata()
+            return
+        }
         val selected = ++generation
+        metadataRequests.reset()
         request?.cancel()
         pages.values.forEach(Job::cancel)
         pages.clear()
@@ -169,6 +182,7 @@ class CatalogModel(
                     }
         val next = cached ?: target
         mutable.value = applyLocal(next).let { it.copy(favoriteTracks = favorites(it)) }
+        fillMetadata()
         if (cached != null) return
         if (target.albumRef?.source == null && target.artistRef?.source == null) {
             if (target.artistId != null) {
@@ -377,6 +391,7 @@ class CatalogModel(
         open(state.value.copy(tracks = state.value.tracks.copy(error = null)), force = true)
 
     fun networkInvalidated() {
+        metadataRequests.pause()
         ++generation
         request?.cancel()
         pages.values.forEach(Job::cancel)
@@ -394,6 +409,11 @@ class CatalogModel(
                 singles = it.singles.copy(loading = false),
             )
         }
+    }
+
+    fun setMetadataVisible(visible: Boolean) {
+        metadataRequests.setVisible(visible)
+        if (visible) fillMetadata()
     }
 
     fun close() {
@@ -449,12 +469,36 @@ class CatalogModel(
         )
     }
 
+    fun refreshMetadata() {
+        metadataRequests.resume()
+        fillMetadata()
+    }
+
+    private fun fillMetadata() {
+        metadataRequests.load(state.value.allTracks() + state.value.favoriteTracks) { tracks ->
+            val updates = tracks.associateBy { it.id }
+            update { old ->
+                old.copy(
+                    localTracks = old.localTracks.map { updates[it.id] ?: it },
+                    tracks =
+                        old.tracks.copy(
+                            data =
+                                old.tracks.data?.let { page ->
+                                    page.copy(items = page.items.map { updates[it.id] ?: it })
+                                }
+                        ),
+                )
+            }
+        }
+    }
+
     private fun update(change: (CatalogScreenState) -> CatalogScreenState) {
         mutable.update(change)
         if (state.value.title.isNotBlank()) {
             cache[key(state.value)] = state.value
             while (cache.size > 8) cache.remove(cache.keys.first())
         }
+        fillMetadata()
     }
 }
 

@@ -1,9 +1,11 @@
 package app.musicplayer.ui.profile
 
 import app.musicplayer.artists.*
+import app.musicplayer.catalog.TrackMetadataLoader
 import app.musicplayer.listening.*
 import app.musicplayer.model.*
 import app.musicplayer.queue.QueuePlaybackPort
+import app.musicplayer.ui.TrackMetadataRequests
 import app.musicplayer.ui.artists.withArtistRevision
 import app.musicplayer.ui.components.LoadState
 import kotlinx.coroutines.*
@@ -19,9 +21,11 @@ class ProfileModel(
     private val player: QueuePlaybackPort,
     ownerScope: CoroutineScope,
     private val artists: StateFlow<LoadState<ArtistDirectory>>? = null,
+    metadata: TrackMetadataLoader? = null,
 ) {
     private val job = SupervisorJob(ownerScope.coroutineContext[Job])
     private val scope = CoroutineScope(ownerScope.coroutineContext + job)
+    private val metadataRequests = TrackMetadataRequests(metadata, scope, initiallyVisible = false)
     private val profileMutable = MutableStateFlow(LoadState<ListeningProfile>(loading = true))
     val profile: StateFlow<LoadState<ListeningProfile>> = profileMutable.asStateFlow()
     private val historyMutable = MutableStateFlow(LoadState<HistoryPage>())
@@ -54,6 +58,7 @@ class ProfileModel(
                             is AppResult.Failure -> old.copy(loading = false, error = result.error)
                         }
                     }
+                    fillMetadata()
                 }
         }
     }
@@ -84,6 +89,7 @@ class ProfileModel(
                         is AppResult.Failure -> old.copy(error = result.error)
                     }
                 }
+                fillMetadata()
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
@@ -124,8 +130,58 @@ class ProfileModel(
     }
 
     fun retry() {
+        metadataRequests.reset()
         observe()
         loadHistory(reset = history.value.data == null)
+    }
+
+    fun setMetadataVisible(visible: Boolean) {
+        metadataRequests.setVisible(visible)
+        if (visible) fillMetadata()
+    }
+
+    fun networkInvalidated() {
+        metadataRequests.pause()
+    }
+
+    fun refreshMetadata() {
+        metadataRequests.resume()
+        fillMetadata()
+    }
+
+    private fun fillMetadata() {
+        val tracks =
+            profile.value.data?.tracks.orEmpty().map { it.track } +
+                history.value.data?.items.orEmpty().map { it.track }
+        metadataRequests.load(tracks) { updated ->
+            val updates = updated.associateBy { it.id }
+            profileMutable.update { old ->
+                old.copy(
+                    data =
+                        old.data?.let { data ->
+                            data.copy(
+                                tracks =
+                                    data.tracks.map {
+                                        it.copy(track = updates[it.track.id] ?: it.track)
+                                    }
+                            )
+                        }
+                )
+            }
+            historyMutable.update { old ->
+                old.copy(
+                    data =
+                        old.data?.let { data ->
+                            data.copy(
+                                items =
+                                    data.items.map {
+                                        it.copy(track = updates[it.track.id] ?: it.track)
+                                    }
+                            )
+                        }
+                )
+            }
+        }
     }
 
     fun close() {

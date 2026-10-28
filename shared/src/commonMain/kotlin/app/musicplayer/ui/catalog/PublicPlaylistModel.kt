@@ -4,6 +4,7 @@ import app.musicplayer.catalog.*
 import app.musicplayer.model.*
 import app.musicplayer.queue.PlaylistPlaybackRequest
 import app.musicplayer.queue.QueuePlaybackPort
+import app.musicplayer.ui.TrackMetadataRequests
 import app.musicplayer.ui.components.LoadState
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -22,9 +23,11 @@ class PublicPlaylistModel(
     private val browse: BrowseCatalog,
     private val player: QueuePlaybackPort,
     ownerScope: CoroutineScope,
+    metadata: TrackMetadataLoader? = null,
 ) {
     private val job = SupervisorJob(ownerScope.coroutineContext[Job])
     private val scope = CoroutineScope(ownerScope.coroutineContext + job)
+    private val metadataRequests = TrackMetadataRequests(metadata, scope, initiallyVisible = false)
     private val mutable = MutableStateFlow(PublicPlaylistScreenState())
     val state: StateFlow<PublicPlaylistScreenState> = mutable.asStateFlow()
     private val cache = mutableMapOf<SourceRef, PublicPlaylistScreenState>()
@@ -34,19 +37,24 @@ class PublicPlaylistModel(
     private var request: Job? = null
     private var pageRequest: Job? = null
     private var networkRefreshPending = false
+    private var metadataVisible = false
 
     fun open(ref: PublicPlaylistRef) = open(ref, refresh = false)
 
     fun refresh(ref: PublicPlaylistRef) = open(ref, refresh = true)
 
     private fun open(ref: PublicPlaylistRef, refresh: Boolean) {
+        setMetadataVisible(true)
         if (
             !refresh &&
                 routeSource == ref.source &&
                 (request?.isActive == true || state.value.tracks.data != null)
-        )
+        ) {
+            fillMetadata()
             return
+        }
         val selected = ++generation
+        metadataRequests.reset()
         ++commandGeneration
         request?.cancel()
         pageRequest?.cancel()
@@ -58,6 +66,7 @@ class PublicPlaylistModel(
                 moreLoading = false,
                 commandError = null,
             ) ?: PublicPlaylistScreenState(ref = ref, tracks = LoadState(loading = true))
+        fillMetadata()
         if (cached != null) return
         request = scope.launch {
             val result = attempt("playlist.load") { browse.playlist(ref, refresh) }
@@ -154,6 +163,7 @@ class PublicPlaylistModel(
     }
 
     fun networkInvalidated() {
+        metadataRequests.pause()
         ++generation
         ++commandGeneration
         networkRefreshPending = true
@@ -170,9 +180,16 @@ class PublicPlaylistModel(
     }
 
     fun networkActivated() {
+        metadataRequests.resume()
         if (!networkRefreshPending) return
         networkRefreshPending = false
-        state.value.ref?.let { open(it, refresh = true) }
+        if (metadataVisible) state.value.ref?.let { open(it, refresh = true) }
+    }
+
+    fun setMetadataVisible(visible: Boolean) {
+        metadataVisible = visible
+        metadataRequests.setVisible(visible)
+        if (visible) fillMetadata()
     }
 
     fun close() {
@@ -181,9 +198,35 @@ class PublicPlaylistModel(
         job.cancel()
     }
 
+    private fun fillMetadata() {
+        metadataRequests.load(state.value.tracks.data?.items.orEmpty().mapNotNull { it.track }) {
+            tracks ->
+            val updates = tracks.associateBy { it.id }
+            update { old ->
+                old.copy(
+                    tracks =
+                        old.tracks.copy(
+                            data =
+                                old.tracks.data?.let { page ->
+                                    page.copy(
+                                        items =
+                                            page.items.map { row ->
+                                                row.copy(
+                                                    track = row.track?.let { updates[it.id] ?: it }
+                                                )
+                                            }
+                                    )
+                                }
+                        )
+                )
+            }
+        }
+    }
+
     private fun update(transform: (PublicPlaylistScreenState) -> PublicPlaylistScreenState) {
         mutable.value = transform(state.value)
         if (state.value.tracks.data != null) routeSource?.let { cache[it] = state.value }
+        fillMetadata()
     }
 
     private suspend fun <T> attempt(

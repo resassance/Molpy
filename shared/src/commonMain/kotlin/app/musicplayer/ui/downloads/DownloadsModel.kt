@@ -10,6 +10,30 @@ fun downloadProgress(asset: OfflineAsset): Float? =
         ?.takeIf { it > 0 }
         ?.let { (asset.bytes.toDouble() / it).toFloat().coerceIn(0f, 1f) }
 
+fun downloadDurationMs(asset: OfflineAsset): Long? =
+    asset.representation.expectedDurationMs?.takeIf { it > 0 }
+        ?: asset.trackSnapshot.candidates
+            .firstOrNull { it.id == asset.candidateId && it.source == asset.source }
+            ?.durationMs
+            ?.takeIf { it > 0 }
+        ?: asset.trackSnapshot.durationMs?.takeIf {
+            it > 0 && asset.trackSnapshot.candidates.firstOrNull()?.source == asset.source
+        }
+
+fun downloadTrack(asset: OfflineAsset): Track {
+    val duration = downloadDurationMs(asset) ?: return asset.trackSnapshot
+    return asset.trackSnapshot
+        .copy(
+            candidates =
+                asset.trackSnapshot.candidates.map {
+                    if (it.id == asset.candidateId && it.source == asset.source)
+                        it.copy(durationMs = duration)
+                    else it
+                }
+        )
+        .withMissingDuration(asset.source, duration)
+}
+
 data class DownloadsState(
     val assets: List<OfflineAsset> = emptyList(),
     val usage: StorageUsageSnapshot = StorageUsageSnapshot(0, emptyMap()),

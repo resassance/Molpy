@@ -8,6 +8,7 @@ import app.musicplayer.ui.catalog.PublicPlaylistModel
 import app.musicplayer.ui.components.TrackActions
 import app.musicplayer.ui.downloads.DownloadsModel
 import app.musicplayer.ui.library.LibraryModel
+import app.musicplayer.ui.navigation.*
 import app.musicplayer.ui.player.PlayerModel
 import app.musicplayer.ui.profile.ProfileModel
 import app.musicplayer.ui.search.SearchModel
@@ -44,6 +45,8 @@ class MolpyModels(
         artistArtwork?.networkInvalidated()
         player.networkInvalidated()
         search.networkInvalidated()
+        library.networkInvalidated()
+        profile.networkInvalidated()
         catalog.networkInvalidated()
         publicPlaylist?.networkInvalidated()
         artistEditor?.networkInvalidated()
@@ -52,10 +55,33 @@ class MolpyModels(
     fun networkActivated() {
         artistArtwork?.networkActivated()
         epoch.value++
+        library.refreshMetadata()
+        catalog.refreshMetadata()
+        player.refreshMetadata()
+        profile.refreshMetadata()
         publicPlaylist?.networkActivated()
         player.loadLyrics()
         val track = player.state.value.currentTrack
         palette.update(track?.id, track?.artwork)
+    }
+
+    fun setMetadataRoute(route: AppRoute?) {
+        catalog.setMetadataVisible(route is AppRoute.Album || route is AppRoute.Artist)
+        publicPlaylist?.setMetadataVisible(route is AppRoute.PublicPlaylist)
+        library.setMetadataVisible(
+            (route as? AppRoute.Root)?.tab == AppTab.LIBRARY ||
+                route is AppRoute.Playlist ||
+                route in
+                    setOf<AppRoute>(
+                        AppRoute.Favorites,
+                        AppRoute.Playlists,
+                        AppRoute.Albums,
+                        AppRoute.Artists,
+                    )
+        )
+        profile.setMetadataVisible(
+            (route as? AppRoute.Root)?.tab == AppTab.PROFILE || route == AppRoute.History
+        )
     }
 
     fun close() {
