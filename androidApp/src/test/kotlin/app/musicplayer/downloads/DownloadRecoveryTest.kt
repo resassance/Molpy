@@ -7,6 +7,25 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class DownloadRecoveryTest {
+    @Test
+    fun probeSizeMismatchRejectsResponseBeforeCacheWrites() {
+        val result =
+            DownloadAdmission.evaluate(
+                SourceRef("youtube", "video", "one"),
+                Representation("audio", "audio/webm", "opus", 1000, null, null),
+                null,
+                0,
+                206,
+                mapOf(
+                    "Content-Range" to listOf("bytes 0-999/2000"),
+                    "Content-Length" to listOf("1000"),
+                ),
+                false,
+            )
+        assertNotNull(result.error)
+        assertNull(result.stamp)
+    }
+
     private val source = SourceRef("fixture", "audio", "one")
     private val representation = Representation("wav", "audio/wav", "pcm", 100, 1000, null)
     private val saved = ResourceStamp(source, "wav", "\"one\"", 100)

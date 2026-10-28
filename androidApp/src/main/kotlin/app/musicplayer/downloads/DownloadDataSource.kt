@@ -6,6 +6,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.*
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import app.musicplayer.model.*
+import app.musicplayer.network.forMediaTransfers
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
@@ -106,12 +107,26 @@ internal class DownloadDataSource private constructor(private val factory: Facto
             if (runtimeUri.scheme == "http" && runtimeUri.host != "127.0.0.1")
                 reject(ErrorCode.URL_REJECTED)
             val calls = factory.callFactoryFor(lease.networkGeneration)
+            val total =
+                lease.representation.expectedBytes
+                    ?: asset.representation.expectedBytes
+                    ?: probeLength(calls, lease)
+            val remaining = total?.let { it - dataSpec.position }
+            if (remaining != null && remaining <= 0) reject(ErrorCode.INCOMPLETE_MEDIA)
+            val requestLength =
+                if (remaining == null) dataSpec.length
+                else if (dataSpec.length < 0) remaining else minOf(dataSpec.length, remaining)
+            val downloadUri =
+                Uri.parse(
+                    downloadRangeUri(lease.request.uri, dataSpec.position, requestLength, total)
+                )
+            val mediaCalls = calls.forMediaTransfers()
             val inspectedCalls = Call.Factory { request ->
-                ResponseInspectingCall(calls.newCall(request)) { response ->
+                ResponseInspectingCall(mediaCalls.newCall(request)) { response ->
                     val observed =
                         DownloadResponse(
                             asset,
-                            lease.representation,
+                            lease.representation.copy(expectedBytes = total),
                             dataSpec.position,
                             dataSpec.length,
                             response.code,
@@ -138,7 +153,8 @@ internal class DownloadDataSource private constructor(private val factory: Facto
                 source.open(
                     dataSpec
                         .buildUpon()
-                        .setUri(runtimeUri)
+                        .setUri(downloadUri)
+                        .setLength(requestLength)
                         .setHttpRequestHeaders(
                             lease.request.headers.filterKeys {
                                 !it.equals("Proxy-Authorization", true) &&
@@ -163,6 +179,37 @@ internal class DownloadDataSource private constructor(private val factory: Facto
     }
 
     private var openedSpec: DataSpec? = null
+
+    private fun probeLength(calls: Call.Factory, lease: ResolvedPlayback): Long? {
+        val probe = downloadRangeUri(lease.request.uri, 0, -1, 1)
+        if (probe == lease.request.uri) return null
+        val request = okhttp3.Request.Builder().url(lease.request.uri)
+        lease.request.headers
+            .filterKeys {
+                !it.equals("Proxy-Authorization", true) &&
+                    !it.equals("Range", true) &&
+                    !it.equals("Accept-Encoding", true)
+            }
+            .forEach { (key, value) -> request.header(key, value) }
+        request.header("Range", "bytes=0-0").header("Accept-Encoding", "identity")
+        return try {
+            calls.newCall(request.build()).execute().use { response ->
+                if (
+                    response.header("Content-Encoding")?.let { !it.equals("identity", true) } ==
+                        true
+                )
+                    null
+                else
+                    downloadProbeLength(
+                        response.code,
+                        response.header("Content-Range"),
+                        response.header("Content-Length"),
+                    )
+            }
+        } catch (_: IOException) {
+            null
+        }
+    }
 
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int =
         try {
