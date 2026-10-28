@@ -65,7 +65,8 @@ internal class DownloadPreparationQueue(
                                 }
                             }
                         } catch (cancelled: CancellationException) {
-                            throw cancelled
+                            currentCoroutineContext().ensureActive()
+                            AppResult.Failure(AppError(ErrorCode.NETWORK, "download.prepare", true))
                         } catch (failure: Exception) {
                             AppResult.Failure(errorFor(failure))
                         }

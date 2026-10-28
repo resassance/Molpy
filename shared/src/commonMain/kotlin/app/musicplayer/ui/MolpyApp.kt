@@ -16,6 +16,7 @@ import app.musicplayer.collections.*
 import app.musicplayer.model.*
 import app.musicplayer.ui.artists.*
 import app.musicplayer.ui.components.*
+import app.musicplayer.ui.downloads.hasDownload
 import app.musicplayer.ui.library.*
 import app.musicplayer.ui.navigation.*
 import app.musicplayer.ui.player.*
@@ -241,8 +242,7 @@ fun MolpyApp(
                         )
                 ) {
                     val currentDownload = track?.let { selectDownload(it, player.snapshot) }
-                    val hasDownload =
-                        track != null && downloads.assets.any { it.trackId == track.id }
+                    val hasDownload = track != null && downloads.hasDownload(track.id)
                     NowPlayingScreen(
                         player,
                         models.player,
@@ -479,16 +479,14 @@ fun MolpyApp(
                                         },
                                         {
                                             selection?.let { chosen ->
+                                                finish(overlay)
                                                 scope.launch {
-                                                    if (
-                                                        action {
-                                                            models.actions.download(
-                                                                chosen.track,
-                                                                chosen.candidate,
-                                                            )
-                                                        }
-                                                    )
-                                                        finish(overlay)
+                                                    action {
+                                                        models.actions.download(
+                                                            chosen.track,
+                                                            chosen.candidate,
+                                                        )
+                                                    }
                                                 }
                                             }
                                         },
@@ -496,7 +494,7 @@ fun MolpyApp(
                                             navigation.select(AppTab.LIBRARY)
                                             navigation.push(AppRoute.Downloads)
                                         },
-                                        downloads.assets.any { it.trackId == value.id },
+                                        downloads.hasDownload(value.id),
                                         { finish(overlay) },
                                         onPlayNext = {
                                             scope.launch {

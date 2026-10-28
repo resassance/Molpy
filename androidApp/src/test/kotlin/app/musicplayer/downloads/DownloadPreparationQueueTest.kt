@@ -167,4 +167,26 @@ class DownloadPreparationQueueTest {
             scope.cancel()
         }
     }
+
+    @Test
+    fun cancelledNetworkGenerationKeepsRetryablePreparation() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val queue = DownloadPreparationQueue(DownloadCommandGate(), scope)
+        try {
+            val result =
+                queue.enqueue<String>(
+                    track,
+                    candidate,
+                    {
+                        throw CancellationException("network generation replaced")
+                    },
+                ) {
+                    AppResult.Success(AssetId("asset"))
+                }
+            assertEquals(ErrorCode.NETWORK, result.errorOrNull()?.code)
+            assertEquals(ErrorCode.NETWORK, queue.states.value.single().error?.code)
+        } finally {
+            scope.cancel()
+        }
+    }
 }

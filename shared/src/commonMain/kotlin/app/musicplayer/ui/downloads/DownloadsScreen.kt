@@ -25,7 +25,9 @@ fun DownloadsScreen(
 ) {
     val state by model.state.collectAsState()
     val scope = rememberCoroutineScope()
-    val available = state.assets.filter { it.state == DownloadState.AVAILABLE }
+    val assets = visibleAssets(state)
+    val preparations = visiblePreparations(state)
+    val available = assets.filter { it.state == DownloadState.AVAILABLE }
     var info by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize()) {
         ScreenHeader("Загрузки", onBack)
@@ -41,8 +43,16 @@ fun DownloadsScreen(
                 )
             }
             state.error?.let { item { InlineError(it, model::refreshStorage) } }
-            val pending = state.assets.filter { it.state != DownloadState.AVAILABLE }
-            if (pending.isNotEmpty()) item { SectionHeader("Загружается") }
+            val pending = assets.filter { it.state != DownloadState.AVAILABLE }
+            if (pending.isNotEmpty() || preparations.isNotEmpty()) item { SectionHeader("Текущие") }
+            items(preparations, key = { "preparation:${it.id}" }) { preparation ->
+                PreparationRow(
+                    preparation,
+                    artwork,
+                    { scope.launch { model.cancelPreparation(preparation.id) } },
+                    { scope.launch { model.retryPreparation(preparation.id) } },
+                )
+            }
             items(pending, key = { it.id.value }) { asset ->
                 DownloadRow(
                     asset,
@@ -61,7 +71,7 @@ fun DownloadsScreen(
                 )
             }
             item {
-                if (pending.isNotEmpty())
+                if (pending.isNotEmpty() || preparations.isNotEmpty())
                     HorizontalDivider(
                         Modifier.padding(top = 24.dp),
                         color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
@@ -134,29 +144,28 @@ private fun DownloadRow(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                val progress = downloadProgress(asset)
+                val status =
+                    downloadStatus(
+                        asset,
+                        state.activity[asset.id],
+                        state.rates[asset.id] ?: DownloadRate(),
+                    )
                 val label =
-                    when (asset.state) {
-                        DownloadState.AVAILABLE ->
-                            "${formatTrackDuration(downloadDurationMs(asset))} · ${formatBytes(state.usage.perAssetBytes[asset.id] ?: asset.bytes)}"
-                        DownloadState.QUEUED -> "В очереди"
-                        DownloadState.PAUSED -> "На паузе · ${formatBytes(asset.bytes)}"
-                        DownloadState.FAILED -> "Не удалось скачать"
-                        DownloadState.DOWNLOADING ->
-                            if (progress == null) formatBytes(asset.bytes)
-                            else
-                                "${formatBytes(asset.bytes)} из ${formatBytes(asset.representation.expectedBytes!!)} · ${(progress*100).toInt()}%"
-                    }
+                    if (asset.state == DownloadState.AVAILABLE)
+                        "${formatTrackDuration(downloadDurationMs(asset))} · ${formatBytes(state.usage.perAssetBytes[asset.id] ?: asset.bytes)}"
+                    else status.label
                 Text(
                     label,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                if (asset.state == DownloadState.DOWNLOADING && progress != null)
+                if (status.progress != null)
                     LinearProgressIndicator(
-                        progress = { progress },
+                        progress = { status.progress },
                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                     )
+                else if (status.indeterminate)
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
             }
             if (
                 asset.state in
@@ -206,6 +215,49 @@ private fun DownloadRow(
             )
             if (error.code == ErrorCode.STORAGE_FULL)
                 TextButton(onManageStorage) { Text("Открыть хранилище") }
+        }
+    }
+}
+
+@Composable
+private fun PreparationRow(
+    preparation: DownloadPreparation,
+    artwork: ArtworkLoader,
+    onCancel: () -> Unit,
+    onRetry: () -> Unit,
+) {
+    val track = preparation.track
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        TrackArtwork(track.artwork, artwork, Modifier.size(64.dp))
+        Column(Modifier.weight(1f).padding(start = 12.dp)) {
+            Text(track.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                trackPresentation(track).artists.joinToString { it.name },
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                preparation.error?.let { present(it).message } ?: "Подготовка",
+                style = MaterialTheme.typography.bodySmall,
+                color =
+                    if (preparation.error != null) MaterialTheme.colorScheme.error
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (preparation.error == null)
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
+        }
+        if (preparation.error != null)
+            IconButton(onRetry) { Icon(AppIcons.Retry, "Повторить подготовку") }
+        IconButton(onCancel) {
+            Icon(
+                AppIcons.Close,
+                if (preparation.error == null) "Отменить подготовку" else "Убрать из списка",
+            )
         }
     }
 }

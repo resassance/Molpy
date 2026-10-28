@@ -83,7 +83,7 @@ internal class DownloadActivityTracker(
                     DownloadActivity(
                         DownloadPhase.VERIFYING,
                         bytes,
-                        total,
+                        total ?: mutable.value[id]?.totalBytes,
                         mutable.value[id]?.attempt ?: UUID.randomUUID().toString(),
                     ))
     }
