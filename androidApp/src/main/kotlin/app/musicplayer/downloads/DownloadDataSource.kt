@@ -244,7 +244,7 @@ internal class DownloadDataSource private constructor(private val factory: Facto
             if (count > 0) {
                 transferred += count
                 activitySession?.let { (id, session) ->
-                    factory.activity?.bytes(id, session, offset + transferred)
+                    factory.activity?.bytes(id, session, this.offset + transferred)
                 }
             }
             if (count > 0)
