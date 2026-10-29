@@ -10,6 +10,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.progressBarRangeInfo
@@ -32,10 +33,13 @@ fun MiniPlayer(
     val track = state.currentTrack ?: return
     val color = MaterialTheme.colorScheme.onSurface
     val open by rememberUpdatedState(onOpen)
+    val fontScale = LocalDensity.current.fontScale
+    val largeText = fontScale > 1.2f
+    val playerHeight = maxOf(64.dp, 40.dp * fontScale + 16.dp)
     Box(
         Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
             .fillMaxWidth()
-            .height(64.dp)
+            .height(playerHeight)
             .clip(RoundedCornerShape(12.dp))
             .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.92f))
             .pointerInput(Unit) {
@@ -55,7 +59,8 @@ fun MiniPlayer(
             .testTag("mini-player")
     ) {
         Row(
-            Modifier.fillMaxSize().padding(horizontal = 10.dp),
+            Modifier.fillMaxSize()
+                .padding(start = 10.dp, end = 10.dp, bottom = if (largeText) 12.dp else 0.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Row(
