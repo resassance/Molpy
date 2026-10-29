@@ -9,6 +9,8 @@ import androidx.compose.ui.graphics.*
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.*
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
 import app.musicplayer.artwork.ArtworkLoader
@@ -45,24 +47,18 @@ fun NowPlayingScreen(
     PlayerSheet(visible, gesturesEnabled, onClose) { dragHandle ->
         BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding().testTag("now-playing")) {
             val compact = maxHeight < 700.dp || LocalDensity.current.fontScale > 1.1f
+            val horizontalFooter = maxWidth > maxHeight
+            val spaciousFooter = maxHeight >= 820.dp && LocalDensity.current.fontScale <= 1.1f
             ArtworkAmbientBackground(LocalArtworkColors.current, Modifier.matchParentSize())
             Column(Modifier.fillMaxSize()) {
-                Row(
-                    dragHandle.fillMaxWidth().height(48.dp).padding(horizontal = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    IconButton(onClose) { Icon(AppIcons.Down, "Свернуть плеер") }
-                    Text(
-                        "Сейчас играет",
-                        Modifier.weight(1f),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = colors.onSurfaceVariant,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                    )
-                    IconButton({ track?.let(onMenu) }, enabled = track != null) {
-                        Icon(AppIcons.More, "Действия с треком")
-                    }
-                }
+                PlayerHeader(
+                    track?.album,
+                    onClose,
+                    { track?.let(onMenu) },
+                    onAlbum,
+                    menuEnabled = track != null,
+                    modifier = dragHandle,
+                )
                 if (track == null) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Text("Выберите трек")
@@ -81,19 +77,23 @@ fun NowPlayingScreen(
                         entryKey = state.snapshot.current?.id ?: track.id,
                         artwork = {
                             BoxWithConstraints(Modifier.fillMaxWidth()) {
+                                val topGap = if (compact) 0.dp else 24.dp
+                                val sideGap = if (maxWidth < 200.dp) 16.dp else 64.dp
                                 val cover =
                                     minOf(
-                                        (maxWidth - 64.dp).coerceAtLeast(0.dp),
+                                        (maxWidth - sideGap).coerceAtLeast(0.dp),
                                         360.dp,
-                                        (maxHeight - 16.dp).coerceAtLeast(0.dp),
+                                        (maxHeight - topGap - 16.dp).coerceAtLeast(0.dp),
                                     )
-                                TrackArtworkStage(
-                                    visuals,
-                                    state.trackMotion,
-                                    artwork,
-                                    cover,
-                                    dragHandle,
-                                )
+                                Box(Modifier.padding(top = topGap)) {
+                                    TrackArtworkStage(
+                                        visuals,
+                                        state.trackMotion,
+                                        artwork,
+                                        cover,
+                                        dragHandle,
+                                    )
+                                }
                             }
                         },
                         metadata = {
@@ -101,8 +101,8 @@ fun NowPlayingScreen(
                                 Modifier.widthIn(max = 520.dp)
                                     .fillMaxWidth()
                                     .padding(
-                                        horizontal = 16.dp,
-                                        vertical = if (compact) 0.dp else 4.dp,
+                                        horizontal = 24.dp,
+                                        vertical = 4.dp,
                                     )
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -119,14 +119,16 @@ fun NowPlayingScreen(
                                                         fontSize = 26.sp,
                                                         lineHeight = 30.sp,
                                                     ),
-                                                minLines = 2,
+                                                minLines = 1,
                                                 maxLines = 2,
                                                 overflow = TextOverflow.Ellipsis,
                                             )
                                             val artistCredits =
                                                 trackPresentation(shown.track).artists
                                             Text(
-                                                artistCredits.joinToString { it.name },
+                                                artistCredits
+                                                    .joinToString(" · ") { it.name }
+                                                    .ifBlank { "Исполнитель не указан" },
                                                 Modifier.fillMaxWidth()
                                                     .heightIn(min = 48.dp)
                                                     .clickable(
@@ -158,27 +160,6 @@ fun NowPlayingScreen(
                                                 if (favorite) colors.primary else colors.onSurface,
                                         )
                                     }
-                                }
-                                TrackChangeContent(
-                                    visuals,
-                                    state.trackMotion,
-                                    Modifier.fillMaxWidth(),
-                                ) { shown, active ->
-                                    val album = shown.track.album
-                                    Text(
-                                        album?.name.orEmpty(),
-                                        Modifier.fillMaxWidth()
-                                            .heightIn(min = 48.dp)
-                                            .clickable(enabled = active && album?.source != null) {
-                                                album?.let(onAlbum)
-                                            }
-                                            .wrapContentHeight(),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = colors.onSurfaceVariant,
-                                        minLines = 1,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
                                 }
                                 if (
                                     state.snapshot.error != null ||
@@ -297,15 +278,6 @@ fun NowPlayingScreen(
                                                 )
                                         }
                                     }
-                                if (compact) {
-                                    PlayerQuickActions(
-                                        onLyrics,
-                                        onPlaylist,
-                                        onDownload,
-                                        downloadLabel,
-                                        downloadEnabled,
-                                    )
-                                }
                             }
                         },
                         transport = {
@@ -321,7 +293,7 @@ fun NowPlayingScreen(
                                 }
                                 BoxWithConstraints(
                                     Modifier.fillMaxWidth()
-                                        .height(if (compact) 64.dp else 88.dp)
+                                        .height(64.dp)
                                         .testTag("player-transport")
                                 ) {
                                     val navigationSize = if (maxWidth < 280.dp) 48.dp else 56.dp
@@ -353,12 +325,12 @@ fun NowPlayingScreen(
                                                     state.snapshot.playWhenReady
                                             IconButton(
                                                 model::playPause,
-                                                Modifier.size(if (compact) 64.dp else 80.dp),
+                                                Modifier.size(64.dp),
                                             ) {
                                                 Icon(
                                                     if (active) AppIcons.Pause else AppIcons.Play,
                                                     if (active) "Пауза" else "Воспроизвести",
-                                                    Modifier.size(if (compact) 48.dp else 64.dp),
+                                                    Modifier.size(64.dp),
                                                 )
                                             }
                                             IconButton(
@@ -377,19 +349,24 @@ fun NowPlayingScreen(
                                     }
                                 }
 
-                                if (!compact) {
-                                    PlayerQuickActions(
-                                        onLyrics,
-                                        onPlaylist,
-                                        onDownload,
-                                        downloadLabel,
-                                        downloadEnabled,
-                                    )
-                                }
+                                PlayerQuickActions(
+                                    onLyrics,
+                                    onPlaylist,
+                                    onDownload,
+                                    downloadLabel,
+                                    downloadEnabled,
+                                )
                             }
                         },
                     )
-                    PlayerLyricsFooter(state, onQueue, onLyrics, model::loadLyrics)
+                    PlayerLyricsFooter(
+                        state,
+                        onQueue,
+                        onLyrics,
+                        model::loadLyrics,
+                        spacious = spaciousFooter,
+                        horizontal = horizontalFooter,
+                    )
                 }
             }
         }
@@ -404,25 +381,47 @@ private fun PlayerQuickActions(
     downloadLabel: String,
     downloadEnabled: Boolean,
 ) {
-    Row(
-        Modifier.fillMaxWidth().padding(vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        PlayerQuickAction("Текст", AppIcons.Queue, onLyrics, Modifier.weight(1f))
-        PlayerQuickAction(
-            "В плейлист",
-            AppIcons.PlaylistAdd,
-            { onPlaylist?.invoke() },
-            Modifier.weight(1.35f),
-            onPlaylist != null,
-        )
-        PlayerQuickAction(
-            downloadLabel,
-            AppIcons.Download,
-            { onDownload?.invoke() },
-            Modifier.weight(1.15f),
-            downloadEnabled && onDownload != null,
-        )
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val measurer = rememberTextMeasurer()
+        val style = MaterialTheme.typography.labelMedium
+        val density = LocalDensity.current
+        val required =
+            listOf("Текст", "В плейлист", downloadLabel).map { label ->
+                with(density) {
+                    measurer.measure(AnnotatedString(label), style = style).size.width.toDp()
+                } + 40.dp
+            }
+        val weights = listOf(1f, 1.35f, 1.15f)
+        val available = maxWidth - 16.dp
+        val scrolling = required.indices.any { required[it] > available * (weights[it] / 3.5f) }
+        val scroll = rememberScrollState()
+        Row(
+            Modifier.fillMaxWidth()
+                .padding(vertical = 4.dp)
+                .then(if (scrolling) Modifier.horizontalScroll(scroll) else Modifier),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            PlayerQuickAction(
+                "Текст",
+                AppIcons.Queue,
+                onLyrics,
+                if (scrolling) Modifier else Modifier.weight(1f),
+            )
+            PlayerQuickAction(
+                "В плейлист",
+                AppIcons.PlaylistAdd,
+                { onPlaylist?.invoke() },
+                if (scrolling) Modifier else Modifier.weight(1.35f),
+                onPlaylist != null,
+            )
+            PlayerQuickAction(
+                downloadLabel,
+                AppIcons.Download,
+                { onDownload?.invoke() },
+                if (scrolling) Modifier else Modifier.weight(1.15f),
+                downloadEnabled && onDownload != null,
+            )
+        }
     }
 }
 
