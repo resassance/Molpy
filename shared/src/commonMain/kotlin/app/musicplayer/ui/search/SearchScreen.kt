@@ -1,9 +1,10 @@
 package app.musicplayer.ui.search
 
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -11,8 +12,13 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import app.musicplayer.artwork.ArtworkLoader
@@ -69,28 +75,37 @@ fun SearchScreen(
                     model.more()
             }
     }
+    var previousError by remember(state.query, state.filter) { mutableStateOf(state.error) }
+    LaunchedEffect(list, state.error) {
+        if (state.error != null && state.error != previousError) list.scrollToItem(0)
+        previousError = state.error
+    }
     Column(Modifier.fillMaxSize()) {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 16.dp)) {
+        Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp)) {
             TextField(
                 query,
                 { query = it },
-                Modifier.fillMaxWidth(),
+                Modifier.fillMaxWidth().heightIn(min = 56.dp),
                 singleLine = true,
-                shape = RoundedCornerShape(10.dp),
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = MaterialTheme.colorScheme.surface,
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                    focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
-                    unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
-                ),
+                shape = RoundedCornerShape(16.dp),
+                colors =
+                    TextFieldDefaults.colors(
+                        focusedContainerColor = MaterialTheme.colorScheme.surface,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                        focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+                        unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+                    ),
                 placeholder = { Text("Название или исполнитель") },
                 leadingIcon = { Icon(AppIcons.Search, null) },
                 trailingIcon = {
                     if (query.isNotEmpty())
-                        IconButton({
-                            query = ""
-                            model.search("")
-                        }) {
+                        IconButton(
+                            onClick = {
+                                query = ""
+                                model.search("")
+                            },
+                            modifier = Modifier.size(48.dp),
+                        ) {
                             Icon(AppIcons.Close, "Очистить поиск")
                         }
                 },
@@ -104,11 +119,29 @@ fun SearchScreen(
                     ),
             )
             Row(
-                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 8.dp),
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 SearchFilter.entries.forEach { filter ->
+                    val requester = remember { BringIntoViewRequester() }
+                    var placed by remember { mutableStateOf(false) }
+                    LaunchedEffect(state.filter, placed) {
+                        if (placed && state.filter == filter) requester.bringIntoView()
+                    }
                     FilterChip(
+                        modifier =
+                            Modifier.heightIn(min = 48.dp)
+                                .bringIntoViewRequester(requester)
+                                .onPlaced { placed = true },
+                        shape = RoundedCornerShape(50),
+                        border = null,
+                        colors =
+                            FilterChipDefaults.filterChipColors(
+                                containerColor = MaterialTheme.colorScheme.surface,
+                                labelColor = MaterialTheme.colorScheme.onSurface,
+                                selectedContainerColor = MaterialTheme.colorScheme.onSurface,
+                                selectedLabelColor = MaterialTheme.colorScheme.surface,
+                            ),
                         selected = state.filter == filter,
                         onClick = {
                             saveScroll()
@@ -132,101 +165,73 @@ fun SearchScreen(
                 item(key = "search-error") { InlineError(error) { model.retry() } }
             }
             val page = state.page
-            page?.topResult?.let { top ->
-                item(key = "search-top-heading") { SearchHeading("Лучший результат") }
-                item(key = top.key) {
-                    Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface, RoundedCornerShape(12.dp)).padding(horizontal = 12.dp)) {
-                    SearchResultRow(
-                        top,
-                        artwork,
-                        current,
-                        model::play,
-                        onMenu,
-                        {
-                            saveScroll()
-                            onArtist(it)
-                        },
-                        {
-                            saveScroll()
-                            onAlbum(it)
-                        },
-                        {
-                            saveScroll()
-                            onPublicPlaylist(it)
-                        },
-                    )
-                    }
-                }
+            val openArtist: (ArtistRef) -> Unit = {
+                saveScroll()
+                onArtist(it)
             }
-            val shown = mutableSetOf<String>()
-            page?.topResult?.let { shown += it.key }
-            page?.sections.orEmpty().forEach { section ->
-                val unique = section.items.filter { shown.add(it.key) }
-                if (unique.isNotEmpty()) {
-                    item(key = "section:${section.filter}:${unique.first().key}") {
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                        ) {
-                            SearchHeading(
-                                if (section.filter == SearchFilter.ALL) "Результаты"
-                                else section.filter.label()
-                            )
-                            if (
-                                state.filter == SearchFilter.ALL &&
-                                    section.filter != SearchFilter.ALL
-                            )
-                                TextButton({
-                                    saveScroll()
-                                    model.selectFilter(section.filter)
-                                }) {
-                                    Text(section.filter.allLabel())
-                                }
-                        }
+            val openAlbum: (AlbumRef) -> Unit = {
+                saveScroll()
+                onAlbum(it)
+            }
+            val openPlaylist: (PublicPlaylistRef) -> Unit = {
+                saveScroll()
+                onPublicPlaylist(it)
+            }
+            page
+                ?.topResult
+                ?.takeIf { state.filter == SearchFilter.ALL }
+                ?.let { top ->
+                    item(key = "search-top-heading") {
+                        Text(
+                            "Лучший результат",
+                            Modifier.padding(bottom = 4.dp),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
-                    val shelf = state.filter == SearchFilter.ALL &&
-                        (section.filter == SearchFilter.ALBUMS || section.filter == SearchFilter.PLAYLISTS)
-                    if (shelf) {
-                        item(key = "shelf:${section.filter}:${unique.first().key}") {
-                            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                unique.forEach { result ->
-                                    when (result) {
-                                        is SearchItem.AlbumItem -> CollectionTile(
-                                            result.card.album.name,
-                                            result.card.artists.joinToString(", ") { it.name },
-                                            { saveScroll(); onAlbum(result.card.album) },
-                                            Modifier.width(136.dp),
-                                        ) { modifier -> TrackArtwork(result.card.artwork, artwork, modifier) }
-                                        is SearchItem.PlaylistItem -> CollectionTile(
-                                            result.card.ref.title,
-                                            result.card.owner,
-                                            { saveScroll(); onPublicPlaylist(result.card.ref) },
-                                            Modifier.width(136.dp),
-                                        ) { modifier -> TrackArtwork(result.card.artwork ?: Artwork(ArtworkKind.PLACEHOLDER, null, null), artwork, modifier) }
-                                        else -> Unit
-                                    }
-                                }
-                            }
-                        }
-                    } else items(unique, key = { it.key }) { item ->
+                    item(key = top.key) {
                         SearchResultRow(
-                            item,
+                            top,
                             artwork,
                             current,
                             model::play,
                             onMenu,
-                            {
-                                saveScroll()
-                                onArtist(it)
-                            },
-                            {
-                                saveScroll()
-                                onAlbum(it)
-                            },
-                            {
-                                saveScroll()
-                                onPublicPlaylist(it)
-                            },
+                            openArtist,
+                            openAlbum,
+                            openPlaylist,
+                        )
+                    }
+                }
+            val sections = page?.displaySections(state.filter).orEmpty()
+            sections.forEach { section ->
+                item(key = "section:${section.filter}") {
+                    SearchSectionHeading(section.filter, state.filter == SearchFilter.ALL) {
+                        saveScroll()
+                        model.selectFilter(section.filter)
+                    }
+                }
+                if (state.filter == SearchFilter.ALL && section.filter == SearchFilter.ALBUMS) {
+                    item(key = "shelf:${section.filter}") {
+                        key(state.query) {
+                            SearchAlbumShelf(
+                                section.items.filterIsInstance<SearchItem.AlbumItem>(),
+                                artwork,
+                                openAlbum,
+                            )
+                        }
+                    }
+                } else {
+                    items(section.items, key = { it.key }) { result ->
+                        SearchResultRow(
+                            result,
+                            artwork,
+                            current,
+                            model::play,
+                            onMenu,
+                            openArtist,
+                            openAlbum,
+                            openPlaylist,
+                            showType = false,
                         )
                     }
                 }
@@ -254,10 +259,24 @@ fun SearchScreen(
 }
 
 @Composable
-private fun SearchHeading(text: String) {
-    Text(
-        text,
-        Modifier.padding(top = 8.dp, bottom = 12.dp),
-        style = MaterialTheme.typography.titleLarge,
-    )
+private fun SearchSectionHeading(filter: SearchFilter, showAll: Boolean, onAll: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 48.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(filter.label(), Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
+        if (showAll) {
+            TextButton(
+                onAll,
+                Modifier.heightIn(min = 48.dp).semantics { contentDescription = filter.allLabel() },
+                colors =
+                    ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    ),
+            ) {
+                Text("Все")
+                Icon(AppIcons.Down, null, Modifier.padding(start = 4.dp).size(20.dp).rotate(-90f))
+            }
+        }
+    }
 }

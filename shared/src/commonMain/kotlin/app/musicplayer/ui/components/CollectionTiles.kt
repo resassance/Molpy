@@ -16,6 +16,7 @@ fun CollectionTile(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     textAlign: TextAlign = TextAlign.Start,
+    titleMaxLines: Int = 1,
     artwork: @Composable (Modifier) -> Unit,
 ) {
     Column(modifier.clickable(onClick = onClick).heightIn(min = 48.dp)) {
@@ -24,7 +25,7 @@ fun CollectionTile(
             title,
             Modifier.fillMaxWidth().padding(top = 4.dp),
             textAlign = textAlign,
-            maxLines = 1,
+            maxLines = titleMaxLines,
             overflow = TextOverflow.Ellipsis,
             style = MaterialTheme.typography.bodyMedium,
         )

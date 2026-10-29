@@ -6,8 +6,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import app.musicplayer.artwork.ArtworkLoader
 import app.musicplayer.catalog.*
 import app.musicplayer.model.*
@@ -41,6 +44,7 @@ fun SearchResultRow(
     onArtist: (ArtistRef) -> Unit,
     onAlbum: (AlbumRef) -> Unit,
     onPublicPlaylist: (PublicPlaylistRef) -> Unit,
+    showType: Boolean = true,
 ) {
     if (item is SearchItem.TrackItem) {
         TrackRow(
@@ -49,6 +53,7 @@ fun SearchResultRow(
             { onPlay(item.key) },
             { onMenu(item.track) },
             selected = item.track.id == current,
+            showAlbum = false,
         )
         return
     }
@@ -59,20 +64,26 @@ fun SearchResultRow(
     when (item) {
         is SearchItem.ArtistItem -> {
             title = item.ref.name
-            subtitle = "Артист"
+            subtitle = if (showType) "Артист" else ""
             image = item.artwork
             open = { onArtist(item.ref) }
         }
         is SearchItem.AlbumItem -> {
             title = item.card.album.name
-            subtitle = (listOf("Альбом") + item.card.artists.map { it.name }).joinToString(" · ")
+            subtitle =
+                (listOfNotNull("Альбом".takeIf { showType }) + item.card.artists.map { it.name })
+                    .joinToString(" · ")
             image = item.card.artwork
             open = { onAlbum(item.card.album) }
         }
         is SearchItem.PlaylistItem -> {
             title = item.card.ref.title
             subtitle =
-                listOfNotNull("Плейлист", item.card.owner, item.card.count?.let { "Треков: $it" })
+                listOfNotNull(
+                        "Плейлист".takeIf { showType },
+                        item.card.owner,
+                        item.card.count?.let { "Треков: $it" },
+                    )
                     .joinToString(" · ")
             image = item.card.artwork
             open = { onPublicPlaylist(item.card.ref) }
@@ -80,7 +91,9 @@ fun SearchResultRow(
         is SearchItem.TrackItem -> return
     }
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = open).padding(vertical = 8.dp),
+        Modifier.fillMaxWidth()
+            .clickable(onClick = open)
+            .padding(vertical = if (showType) 0.dp else 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (item is SearchItem.ArtistItem)
@@ -88,30 +101,43 @@ fun SearchResultRow(
                 item.ref.name,
                 item.ref.source,
                 artwork,
-                Modifier.size(64.dp),
+                Modifier.size(if (showType) 64.dp else 56.dp),
                 initial = image,
             )
         else
             TrackArtwork(
                 image ?: Artwork(ArtworkKind.PLACEHOLDER, null, null),
                 artwork,
-                Modifier.size(64.dp),
+                Modifier.size(if (showType) 64.dp else 56.dp),
             )
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(
                 title,
-                style = MaterialTheme.typography.bodyLarge,
+                style =
+                    if (showType)
+                        MaterialTheme.typography.bodyLarge.copy(
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    else MaterialTheme.typography.bodyLarge,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Text(
-                subtitle,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
+            if (subtitle.isNotBlank())
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
         }
+        Icon(
+            AppIcons.Down,
+            null,
+            Modifier.padding(start = 8.dp).size(24.dp).rotate(-90f),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
