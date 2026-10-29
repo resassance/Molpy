@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.*
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -21,8 +22,9 @@ internal fun PlayerHeader(
     menuEnabled: Boolean,
     modifier: Modifier = Modifier,
 ) {
+    val headerHeight = maxOf(64.dp, 40.dp * LocalDensity.current.fontScale)
     Row(
-        modifier.fillMaxWidth().height(64.dp).padding(horizontal = 8.dp),
+        modifier.fillMaxWidth().height(headerHeight).padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(onClose, Modifier.size(48.dp)) { Icon(AppIcons.Down, "Свернуть плеер") }
