@@ -11,10 +11,10 @@
   <a href="https://developer.android.com/media/media3"><img alt="Media3 1.11.1" src="https://img.shields.io/badge/Media3-1.11.1-00897B?style=for-the-badge&logo=android&logoColor=white"></a>
 </p>
 
-[![Prerelease](https://img.shields.io/badge/release-v0.1.0--alpha.17-D97706?style=flat-square)](https://github.com/resassance/Molpy/releases/tag/v0.1.0-alpha.17)
+[![Prerelease](https://img.shields.io/badge/release-v0.1.0--alpha.18-D97706?style=flat-square)](https://github.com/resassance/Molpy/releases/tag/v0.1.0-alpha.18)
 [![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0--only-546E7A?style=flat-square)](LICENSE)
 
-**[Download APK](https://github.com/resassance/Molpy/releases/download/v0.1.0-alpha.17/Molpy-v0.1.0-alpha.17-debug.apk)** · [Release page](https://github.com/resassance/Molpy/releases/tag/v0.1.0-alpha.17) · [Report an issue](https://github.com/resassance/Molpy/issues)
+**[Download APK](https://github.com/resassance/Molpy/releases/download/v0.1.0-alpha.18/Molpy-v0.1.0-alpha.18-debug.apk)** · [Release page](https://github.com/resassance/Molpy/releases/tag/v0.1.0-alpha.18) · [Report an issue](https://github.com/resassance/Molpy/issues)
 
 ## Contents
 
@@ -39,9 +39,9 @@ No Molpy account or dedicated backend is required. Google sign-in is not impleme
 
 | Capability | What is available |
 | --- | --- |
-| Search | Combined results and filters for tracks, artists, albums, and playlists; artist and album pages; YouTube search fallback |
+| Search | Best match, large album artwork, playlist and track lists; type filters, artist and album pages, and YouTube search fallback |
 | Public playlists | Start from any track or a random song, load the remaining queue in the background, and continue after restarting |
-| Player | Full player with artwork and a line of lyrics; play, pause, seek, next and previous track, position, duration, and playback buffer |
+| Player | Album in the header, artwork with neighboring queue entries, and the current lyric line; play, pause, seek, next and previous track, position, duration, and playback buffer |
 | Volume | Source-based volume normalization for online and offline playback; can be disabled in settings |
 | Queue | Dedicated queue screen; play next or add to the end, shuffle, reorder, and go back through playback history; keep the queue between launches |
 | Library | Favorites card with a Play button, collection and download shortcuts, and shelves for your playlists, artists, and albums; shuffled collection playback |
@@ -51,7 +51,7 @@ No Molpy account or dedicated backend is required. Google sign-in is not impleme
 | Background playback | Android media session and system playback controls |
 | Lyrics | YouTube Music and LRCLIB; the current line in the player and a dedicated full lyrics screen when available for the recording |
 | Network | System connection, HTTP CONNECT proxy with no authentication or username/password, and SOCKS5 without authentication |
-| Downloads | One track at a time, pause and resume, deletion, storage usage, and local playback |
+| Downloads | Preparation and queue states, transferred size, download speed, and estimated time remaining; cancel preparation, pause, resume, delete, and play locally |
 
 Choose a theme in Settings → Appearance: near-black Dark, warm brown Classic, or Light. Your choice is kept between launches. When an artist photo is unavailable, an avatar with a letter from the name remains.
 
@@ -72,7 +72,7 @@ The desktop app will gradually gain the Android app’s features; web will follo
 
 **Requirements:** Android 6.0 / API 23 or later, on a 64-bit `arm64-v8a` device or `x86_64` emulator/device. The APK does not include 32-bit ABIs.
 
-1. Open [release v0.1.0-alpha.17](https://github.com/resassance/Molpy/releases/tag/v0.1.0-alpha.17) and download `Molpy-v0.1.0-alpha.17-debug.apk`.
+1. Open [release v0.1.0-alpha.18](https://github.com/resassance/Molpy/releases/tag/v0.1.0-alpha.18) and download `Molpy-v0.1.0-alpha.18-debug.apk`.
 2. Install the APK, allowing installation from your chosen source in Android settings if prompted.
 3. If YouTube is unavailable on your network, enable a system VPN or configure a proxy in Molpy’s network settings.
 4. Search by artist and title and select a recording from the results.
